@@ -18,7 +18,8 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 
-
+# Set the data folder path
+data_folder = "/cluster/home/lkellijs/camlab-pino/data/"
 
 #------------------------------------------------------------------------------
 
@@ -256,12 +257,11 @@ class SinFrequencyDataset(Dataset):
     def __init__(self, which="training", nf=0, training_samples = 1024, s=64, in_dist = True):
         
         
-        #The file:
+        #The file: #! note: these have been updated from the original: PoissonData_PDEDomain2.h5
         if in_dist:
-            self.file_data = "/cluster/scratch/harno/data/PoissonData_PDEDomain2.h5"
+            self.file_data = 'data/PoissonData_64x64_IN.h5'
         else:
-            self.file_data = "/cluster/scratch/harno/data/PoissonData_PDE_outDomain2.h5"
-            #self.file_data = "/cluster/scratch/harno/data/PoissonData_PDE_outDomain2.h5"
+            self.file_data = 'data/PoissonData_64x64_OUT.h5'
 
         #Load normalization constants from the TRAINING set:
         self.reader = h5py.File(self.file_data, 'r')
@@ -288,7 +288,7 @@ class SinFrequencyDataset(Dataset):
         
         #Load different resolutions
         if s!=64:
-            self.file_data = "data/PoissonData_NEW_s" + str(s) + ".h5"
+            self.file_data = "data/Poisson_res/PoissonData_NEW_s" + str(s) + ".h5"
             self.start = 0
         
         #If the reader changed.
@@ -297,7 +297,12 @@ class SinFrequencyDataset(Dataset):
         #Fourier modes (Default is 0):
         self.N_Fourier_F = nf
         self.N_Fourier_Precondioning=0
-        self.Domain=self.reader['Domain']
+        # Try to read Domain from file, otherwise use default value
+        try:
+            self.Domain = self.reader['Domain']
+        except KeyError:
+            print("Domain not found in file, using default value of 1.0")
+            self.Domain = 1.0  # Default domain size for most Poisson problems
         
     def __len__(self):
         return self.length
@@ -344,11 +349,24 @@ class SinFrequencyDataset(Dataset):
 
 
 class SinFrequency:
+    '''This class is used to load the Poisson data
+    It returns the input and output data for the Poisson equation.
+    
+    It contains:
+    - self.model: the CNO model
+    - self.train_loader: the training loader
+    - self.val_loader: the validation loader
+    - self.test_loader: the test loader
+    '''
     def __init__(self, network_properties, device, batch_size, training_samples = 1024, s = 64, in_dist = True):
         
         if "in_size" in network_properties:
             self.in_size = network_properties["in_size"]
-            assert self.in_size<=128        
+            # !DEBUG
+            print(f"in_size: {self.in_size}")
+            # !DEBUG END
+            print(f"type(in_size): {type(self.in_size)}")
+            assert self.in_size<=128 and self.in_size >= 64  # Support 64x64 and 128x128        
         else:
             raise ValueError("You must specify the computational grid size.")
         
@@ -418,8 +436,7 @@ class HelmholtzDataset(Dataset):
         
         #Dataset 1 (less scales --> up to 8):
         """
-        #self.file_data = "/cluster/scratch/harno/data/HelmotzData_FixedBC1_4shapes_fixed_w_processed.h5"
-        self.file_data = "data/HelmotzData_FixedBC1_4shapes_fixed_w_processed.h5"
+        self.file_data = data_folder + "HelmotzData_FixedBC1_4shapes_fixed_w_processed.h5"
         self.reader = h5py.File(self.file_data, 'r')
         
         self.mean = 0.24185410524000955
@@ -451,17 +468,17 @@ class HelmholtzDataset(Dataset):
             self.mean = 0.236221626070
             self.std = 2.147599637905932
             if cluster:
-                self.file_data = "/cluster/scratch/harno/data/HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
+                self.file_data = data_folder + "HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
             else:
-                self.file_data = "/cluster/scratch/harno/data/HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
+                self.file_data = data_folder + "HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
 
         elif self.N_max == 19675:
             self.mean = 0.11523915668552
             self.std = 0.8279975746000605
             if cluster:
-                self.file_data = "/cluster/scratch/harno/data/HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
+                self.file_data = data_folder + "HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
             else:
-                self.file_data = "/cluster/scratch/harno/data/HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
+                self.file_data = data_folder + "HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
 
         self.reader = h5py.File(self.file_data, 'r')        
 

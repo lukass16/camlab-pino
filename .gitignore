@@ -1,4 +1,5 @@
 
+# general files
 desktop.ini
 .venv
 TrainedModels
@@ -10,5 +11,16 @@ data
 Physic_CNO/Move_data.txt
 Out
 scratch
+
+# pycache
+**/__pycache__/
+**/__pycache__/*
+
+# logging
+logs
+
+# helper files
+cluster_help.txt
+
 
 

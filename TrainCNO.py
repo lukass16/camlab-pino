@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from Problems.CNOBenchmarks import Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer, Darcy, Helmholtz
 from Physic_CNO.loss_functions.Relative_loss import Relative_loss,Relative_error_training
 
+
+"""-------------------------------Setting parameters for training--------------------------------"""
 if len(sys.argv) == 2:
     
     training_properties = {
@@ -21,8 +23,8 @@ if len(sys.argv) == 2:
         "epochs": 300,
         "batch_size": 16,
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
-        "training_samples": 5008,    # How many training samples?
-        "pad_factor": 10
+        "training_samples": 1024,    # How many training samples?
+        "pad_factor": 0         # No padding needed for 64x64 data
     }
     model_architecture_ = {
         
@@ -33,7 +35,7 @@ if len(sys.argv) == 2:
         "N_res_neck" : 5,         # Number of (R) blocks in the BN
         
         #Other parameters:
-        "in_size": 128,            # Resolution of the computational grid
+        "in_size": 64,             # Resolution of the computational grid (matches data)
         "retrain": 4,             # Random seed
         "kernel_size": 3,         # Kernel size.
         "FourierF": 0,            # Number of Fourier Features in the input channels. Default is 0.
@@ -64,7 +66,7 @@ if len(sys.argv) == 2:
 
     # Save the models here:
     training_samples=training_properties["training_samples"]
-    folder = "/cluster/scratch/harno/TrainedModels/"+"CNO_"+str(training_samples)+which_example
+    folder = "/cluster/home/lkellijs/camlab-pino/TrainedModels/"+"CNO_"+str(training_samples)+which_example #! Change this to your own path
         
 else:
     
@@ -96,15 +98,18 @@ if not os.path.isdir(folder):
     print("Generated new folder")
     os.mkdir(folder)
 
+# save the training properties and the model architecture
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
 df = pd.DataFrame.from_dict([model_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
+
+"""------------------------------------Load the data--------------------------------------"""
 if which_example == "shear_layer":
     example = ShearLayer(model_architecture_, device, batch_size, training_samples, size = 64)
 elif which_example == "poisson":
-    example = SinFrequency(model_architecture_, device, batch_size, training_samples)
+    example = SinFrequency(model_architecture_, device, batch_size, training_samples) # automatically uses s=64
 elif which_example == "helmholtz":
     example = Helmholtz(model_architecture_, device, batch_size, training_samples,s=128,N_max=19675,pad_factor=pad_factor)
 elif which_example == "wave_0_5":
@@ -123,7 +128,7 @@ elif which_example == "darcy":
 else:
     raise ValueError()
     
-#-----------------------------------Train--------------------------------------
+"""------------------------------------Train--------------------------------------"""
 model = example.model
 n_params = model.print_size()
 train_loader = example.train_loader #TRAIN LOADER
@@ -159,12 +164,15 @@ loss_train=Relative_error_training(p=p,pad_factor=pad_factor,input_size=in_size,
 
 for epoch in range(epochs):
     
+    # each epoch
     with tqdm(unit="batch", disable=False) as tepoch:
         
         model.train()
         tepoch.set_description(f"Epoch {epoch}")
         train_mse = 0.0
         running_relative_train_mse = 0.0
+        
+        # each batch in the training loader
         for step, (input_batch, output_batch) in enumerate(train_loader):
             optimizer.zero_grad()
             input_batch = input_batch.to(device)
@@ -196,12 +204,13 @@ for epoch in range(epochs):
 
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
         
+        # after each epoch, we evaluate the model on the validation a set
         with torch.no_grad():
             model.eval()
             test_relative_l2 = 0.0
             train_relative_l2 = 0.0
             
-            
+            # each batch in the validation loader
             for step, (input_batch, output_batch) in enumerate(val_loader):
                 
                 input_batch = input_batch.to(device)
@@ -217,6 +226,7 @@ for epoch in range(epochs):
             test_relative_l2 /= len(val_loader)
             history_val.append(test_relative_l2)
 
+            # each batch in the training loader
             for step, (input_batch, output_batch) in enumerate(train_loader):
                 input_batch = input_batch.to(device)
                 output_batch = output_batch.to(device)
@@ -238,7 +248,7 @@ for epoch in range(epochs):
             if test_relative_l2 < best_model_testing_error:
                 best_model_testing_error = test_relative_l2
                 best_model = copy.deepcopy(model)
-                torch.save(best_model, folder + "/model.pkl")
+                torch.save(best_model, folder + "/model.pkl") #! save the best model
                 writer.add_scalar("val_loss/Best Relative Testing Error", best_model_testing_error, epoch)
                 counter = 0
             else:
@@ -247,6 +257,7 @@ for epoch in range(epochs):
         tepoch.set_postfix({'Train loss': train_mse, "Relative Train": train_relative_l2, "Relative Val loss": test_relative_l2})
         tepoch.close()
 
+        # Save most recent errors to a file
         with open(folder + '/errors.txt', 'w') as file:
             file.write("Training Error: " + str(train_mse) + "\n")
             file.write("Best Testing Error: " + str(best_model_testing_error) + "\n")
@@ -254,10 +265,12 @@ for epoch in range(epochs):
             file.write("Params: " + str(n_params) + "\n")
         scheduler.step()
 
+    # Early stopping
     if counter>patience:
         print("Early Stopping")
         break
 
+    # Plot losses
     fig, axes = plt.subplots(1, 3, figsize=(10, 5))
     
     axes[0].set_yscale('log')
