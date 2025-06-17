@@ -1,0 +1,14 @@
+
+desktop.ini
+.venv
+TrainedModels
+TrainedModels_with_pde_loss
+env
+SELECTED_MODELS
+Data_unsupervised
+data
+Physic_CNO/Move_data.txt
+Out
+scratch
+
+

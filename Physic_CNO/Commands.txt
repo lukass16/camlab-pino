@@ -1,0 +1,31 @@
+How to move Data: To Euler
+scp data\PoissonData_IN_TRAINING.h5 harno@euler.ethz.ch:/cluster/scratch/harno/data 
+scp PoissonData_PDEDomain1.h5 harno@euler.ethz.ch:/cluster/scratch/harno/data/PoissonData_PDEDomain1.h5 
+scp -r SELECTED_MODELS\Best_poisson_CNO harno@euler.ethz.ch:/cluster/scratch/harno/SELECTED_MODELS 
+scp -r Best_Models_CNO harno@euler.ethz.ch:/cluster/scratch/harno/Best_Models_CNO
+scp -r Best_Model_Physic_CNO harno@euler.ethz.ch:/cluster/scratch/harno/Best_Model_Physic_CNO
+scp -r Best_CNO_poisson_16_256  harno@euler.ethz.ch:/cluster/scratch/harno/Best_Model_Physic_CNO/Best_CNO_poisson_16_256 
+
+How to move Data: To PC 
+scp -r harno@euler.ethz.ch:/cluster/scratch/harno/data data
+scp harno@euler.ethz.ch:/cluster/scratch/harno/data/PoissonData_PDEDomain1.h5 PoissonData_PDEDomain1.h5
+scp -r harno@euler.ethz.ch:/cluster/scratch/harno/MODEL_SELECTION_CNO_poisson_1 MODEL_SELECTION_CNO_poisson_1
+scp -r harno@euler.ethz.ch:/cluster/scratch/harno/TrainedModels TrainedModels
+scp -r harno@euler.ethz.ch:/cluster/scratch/harno/MODEL_SELECTION_CNO_poisson_5 MODEL_SELECTION_CNO_poisson_5
+
+Load modules:
+module load gcc/8.2.0 python_gpu/3.11.2 ninja cuda/11.7.0
+
+Run on GPU:
+sbatch --output=Out/CNO%j.out --time=4:00:00 -n 16 -G 1 --mem-per-cpu=512 --wrap="python3 TrainPhysic_informed_CNO.py helmholtz"
+sbatch --output=Out/CNO%j.out --time=4:00:00 -n 16 -G 1 --mem-per-cpu=512 --wrap="python3 TrainCNO.py helmholtz"
+sbatch --output=Out/CNO%j.out --time=4:00:00 -n 16 -G 1 --mem-per-cpu=512 --wrap="python3 TrainPhysic_informed_CNO_No_pre_training.py poisson"
+sbatch --output=Out/%j.out --time=4:00:00 -n 16 -G 1 --mem-per-cpu=512 --wrap="python3 Error_Distribution_Physic_CNO.py"
+
+Create Data:
+sbatch --time=6:00:00 --wrap="python3 Create_Data.py"
+
+
+Check space:
+lquota
+ln -s  /cluster/scratch/harno/ scratch

@@ -1,0 +1,15 @@
+h5py
+legacy
+matplotlib
+metrics
+netCDF4
+numpy
+pandas
+Pillow
+psutil
+pyspng
+Requests
+scipy
+setuptools
+torch
+tqdm
