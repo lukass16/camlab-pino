@@ -9,7 +9,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from Problems.CNOBenchmarks import Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer, Darcy, Helmholtz
-from Physic_CNO.loss_functions.Relative_loss import Relative_loss,Relative_error_training
+from Physics_NO.loss_functions.Relative_loss import Relative_loss,Relative_error_training
 
 
 """-------------------------------Setting parameters for training--------------------------------"""

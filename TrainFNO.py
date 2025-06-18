@@ -10,6 +10,8 @@ from tqdm import tqdm
 
 from Problems.FNOBenchmarks import Darcy, Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer
 
+
+"""-------------------------------Setting parameters for training--------------------------------"""
 if len(sys.argv) == 2:
 
     training_properties = {
@@ -69,6 +71,8 @@ training_samples = training_properties["training_samples"]
 p = training_properties["exp"]
 
 
+"""------------------------------------Load the data--------------------------------------"""
+
 if which_example == "shear_layer":
     example = ShearLayer(fno_architecture_, device, batch_size, training_samples)
 elif which_example == "poisson":
@@ -95,15 +99,18 @@ if not os.path.isdir(folder):
     print("Generated new folder")
     os.mkdir(folder)
 
+# save the training properties and the architecture
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
 df = pd.DataFrame.from_dict([fno_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
+
+"""------------------------------------Train--------------------------------------"""
 model = example.model
 n_params = model.print_size()
 train_loader = example.train_loader
-test_loader = example.val_loader
+val_loader = example.val_loader
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
@@ -117,19 +124,24 @@ elif p == 2:
 best_model_testing_error = 300
 patience = int(0.25 * epochs)
 counter = 0
+
 for epoch in range(epochs):
+    
+    # each epoch
     with tqdm(unit="batch", disable=False) as tepoch:
         model.train()
         tepoch.set_description(f"Epoch {epoch}")
         train_mse = 0.0
         running_relative_train_mse = 0.0
+        
+        # each batch in the training loader
         for step, (input_batch, output_batch) in enumerate(train_loader):
             optimizer.zero_grad()
             input_batch = input_batch.to(device)
             output_batch = output_batch.to(device)
             output_pred_batch = model(input_batch)
 
-            if which_example == "airfoil":
+            if which_example == "airfoil": # Mask the airfoil shape
                 output_pred_batch[input_batch==1] = 1
                 output_batch[input_batch==1] = 1
 
@@ -142,12 +154,14 @@ for epoch in range(epochs):
                         
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
 
+        # after each epoch, we evaluate the model on the validation and train set
         with torch.no_grad():
             model.eval()
             test_relative_l2 = 0.0
             train_relative_l2 = 0.0
 
-            for step, (input_batch, output_batch) in enumerate(test_loader):
+            # loop through the validation loader
+            for step, (input_batch, output_batch) in enumerate(val_loader):
                 input_batch = input_batch.to(device)
                 output_batch = output_batch.to(device)
                 output_pred_batch = model(input_batch)
@@ -158,8 +172,9 @@ for epoch in range(epochs):
                 
                 loss_f = torch.mean(abs(output_pred_batch - output_batch)) / torch.mean(abs(output_batch)) * 100
                 test_relative_l2 += loss_f.item()
-            test_relative_l2 /= len(test_loader)
+            test_relative_l2 /= len(val_loader)
             
+            # loop through the train loader
             for step, (input_batch, output_batch) in enumerate(train_loader):
                     input_batch = input_batch.to(device)
                     output_batch = output_batch.to(device)

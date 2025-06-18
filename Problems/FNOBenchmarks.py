@@ -209,12 +209,12 @@ class ShearLayer:
 class SinFrequencyDataset(Dataset):
     def __init__(self, which="training", nf=0, training_samples = 1024, s=64, in_dist = True):
         
-        #The file:
+        #The file: #! note: these have been updated from the original: PoissonData_PDEDomain2.h5
         if in_dist:
-            self.file_data = "/cluster/scratch/harno/data/PoissonData_PDEDomain2.h5"
+            self.file_data = '/cluster/home/lkellijs/camlab-pino/data/PoissonData_64x64_IN.h5'
         else:
-            self.file_data = "/cluster/scratch/harno/data/PoissonData_PDE_outDomain2.h5"
-
+            self.file_data = '/cluster/home/lkellijs/camlab-pino/data/PoissonData_64x64_OUT.h5'
+            
         #Load normalization constants from the TRAINING set:
         self.reader = h5py.File(self.file_data, 'r')
         self.min_data = self.reader['min_inp'][()]
@@ -240,7 +240,7 @@ class SinFrequencyDataset(Dataset):
         
         #Load different resolutions
         if s!=64:
-            self.file_data = "data/PoissonData_NEW_s" + str(s) + ".h5"
+            self.file_data = "data/Poisson_res/PoissonData_NEW_s" + str(s) + ".h5"
             self.start = 0
         
         #If the reader changed.

@@ -115,11 +115,8 @@ import numpy as np
 import scipy.signal
 import scipy.optimize
 import torch
-from torch_utils import misc
-from torch_utils import persistence
-from torch_utils.ops import conv2d_gradfix
-from torch_utils.ops import filtered_lrelu
-from torch_utils.ops import bias_act
+from utils.torch_ops import assert_shape, persistent_class
+from utils.custom_ops import conv2d_gradfix, filtered_lrelu, bias_act
 
 import torch.nn.utils.parametrize as parametrize
 import torch.nn as nn
@@ -177,7 +174,7 @@ class RadialConv2d(nn.Module):
 #   1. APPLY 2D CONVOLUTION
 #   2. APPLY MODIFIED ACTIVATION LAYER
 
-@persistence.persistent_class
+@persistent_class
 class SynthesisLayer(torch.nn.Module):
     def __init__(self,
         #w_dim,                          # Intermediate latent (W) dimensionality.
@@ -274,7 +271,7 @@ class SynthesisLayer(torch.nn.Module):
 
 
         # Ensure correct shape and dtype.
-        misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
+        assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
         assert x.dtype == dtype
         return x
 
@@ -315,7 +312,7 @@ class SynthesisLayer(torch.nn.Module):
 #----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 
-@persistence.persistent_class
+@persistent_class
 class LReLu(torch.nn.Module):
     def __init__(self,
         in_channels,                    # Number of input channels.
@@ -394,7 +391,7 @@ class LReLu(torch.nn.Module):
 
 
         # Ensure correct shape and dtype.
-        misc.assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
+        assert_shape(x, [None, self.out_channels, int(self.out_size[1]), int(self.out_size[0])])
         assert x.dtype == dtype
         return x
 

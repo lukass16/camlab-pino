@@ -11,18 +11,23 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from Problems.FNOBenchmarks import SinFrequency
-from Physic_CNO.loss_functions.Relative_loss import Relative_loss
-from Physic_CNO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
+from Physics_NO.loss_functions.Relative_loss import Relative_loss
+from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
 
 
+
+"""-------------------------------Setting parameters for training--------------------------------"""
+'''
+Currently the code trains an FNO
+'''
 if len(sys.argv) == 2:
 
     InfoPretrainedNetwork= {
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None, 
-        "Pretrained Samples":  128,
+        "Path to pretrained model": "TrainedModels/FNO_poisson_tmp1",
+        "Pretrained Samples":  1024,
     }
 
     training_properties = {
@@ -33,7 +38,7 @@ if len(sys.argv) == 2:
         "epochs": 100,
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
-        "training_samples": 128,  # How many training samples?
+        "training_samples": 1024,  # How many training samples?
         "pde_decay": 1,
         "boundary_decay":1,
         "pad_factor": 0
@@ -48,7 +53,7 @@ if len(sys.argv) == 2:
     which_example = sys.argv[1]
 
     # Save the models here:
-    folder = "/cluster/scratch/harno/TrainedModels/"+"PINO"+which_example
+    folder = "TrainedModels/"+"PINO_pretrained"+which_example
         
 else:
     
@@ -72,7 +77,7 @@ scheduler_gamma = training_properties["scheduler_gamma"]
 training_samples = training_properties["training_samples"]
 p = training_properties["exp"]
 lampda=training_properties['pde_decay']
-Boundary_decay=training_properties['boundary_decay']
+boundary_decay=training_properties['boundary_decay']
 pad_factor=training_properties['pad_factor']
 
 
@@ -80,7 +85,9 @@ if not os.path.isdir(folder):
     print("Generated new folder")
     os.mkdir(folder)
 
-#Load and save network paramenters
+
+"""------------------------------------Load  pretrained model and data--------------------------------------"""
+# load the training properties and the architecture of the pretrained model
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
 df = pd.DataFrame.from_dict([InfoPretrainedNetwork]).T
@@ -93,43 +100,58 @@ df = pd.DataFrame.from_dict([fno_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 in_size=fno_architecture_["width"]
 
+# load the data
 if which_example == "poisson":
     example = SinFrequency(fno_architecture_, device, batch_size,training_samples)
 else:
-    raise ValueError("the variable which_example has to be one between darcy")
+    raise ValueError("Dataset type not found. Please choose between {poisson}")
 
-
+# create the model folder
 if not os.path.isdir(folder):
     print("Generated new folder")
     os.mkdir(folder)
 
+# save the training properties and the architecture
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
 df = pd.DataFrame.from_dict([fno_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
 
-#-----------------------------------Load pretrained model--------------------------------------
-
+# load pretrained model
 pretrained_model_path = InfoPretrainedNetwork["Path to pretrained model"]+'/model.pkl'
 if not os.path.exists(pretrained_model_path):
     raise FileNotFoundError(f"The model file '{pretrained_model_path}' does not exist.")
 
-model = torch.load(pretrained_model_path, map_location=device)
-model_fix=torch.load(pretrained_model_path, map_location=device)
+# 1 load the model for finetuning
+model = torch.load(pretrained_model_path, map_location=device, weights_only=False)
+# fix device mismatch
+if hasattr(model, 'device'):
+    model.device = device
+model = model.to(device)
+
+# 2 load the anchor model (for the anchor loss)
+model_fix=torch.load(pretrained_model_path, map_location=device, weights_only=False)
+# fix device mismatch
+if hasattr(model_fix, 'device'):
+    model_fix.device = device
+model_fix = model_fix.to(device)
 
 for param in model_fix.parameters():
    param.requires_grad = False
 
 print(f'Loading trained network from {pretrained_model_path}')
 
-#-----------------------------------Train--------------------------------------------
 
+"""------------------------------------Train--------------------------------------"""
 n_params = model.print_size()
-train_loader = example.train_loader #TRAIN LOADER
-val_loader = example.val_loader #VALIDATION LOADER
+train_loader = example.train_loader
+val_loader = example.val_loader
 
-Normalization_values=train_loader.dataset.get_max_and_min() #Get max_min of the data
+Normalization_values=train_loader.dataset.get_max_and_min() # need these for PI-loss
+
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
 
 if str(device) == 'cpu':
     print("------------------------------------------")
@@ -138,22 +160,21 @@ if str(device) == 'cpu':
     print("------------------------------------------")
     print(" ")
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
+# define the loss functions
+loss_relative=Relative_loss(pad_factor,in_size)
+loss_pde     =Loss_PDE(which_example=which_example,Normalization_values=Normalization_values,p=p,\
+                       pad_factor=pad_factor,in_size=in_size,device=device)
+Operator_loss=Loss_OP(p=p,in_size=in_size,pad_factor=pad_factor) # this is the anchor loss
+losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': [], 'loss_validation':[]}
 
 
 patience = int(0.25 * epochs)
 best_model_testing_error = 300
-
-loss_relative=Relative_loss(pad_factor,in_size)
-loss_pde     =Loss_PDE(which_example=which_example,Normalization_values=Normalization_values,p=p,\
-                       pad_factor=pad_factor,in_size=in_size,device=device)
-Operator_loss=Loss_OP(p=p,in_size=in_size,pad_factor=pad_factor)
-
-losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': [], 'loss_validation':[]}
-
 counter = 0
+
 for epoch in range(epochs):
+    
+    # each epoch
     with tqdm(unit="batch", disable=False) as tepoch:
         model.train()
         tepoch.set_description(f"Epoch {epoch}")
@@ -162,17 +183,22 @@ for epoch in range(epochs):
         losses['loss_OP'].append(0)
         losses['loss_boundary'].append(0)
         running_relative_train_mse = 0.0
+        
+        # loop through the training loader
         for step, (input_batch, output_batch) in enumerate(train_loader):
             optimizer.zero_grad()
             input_batch = input_batch.to(device)
             output_batch = output_batch.to(device)
             output_pred_batch = model(input_batch)
+            
+            # get the anchor output
             with torch.no_grad():
                  output_fix=model_fix(input_batch)
-
+            
+            # get the loss
             loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
                                              output=output_pred_batch.view(batch_size,-1,in_size,in_size))
-            loss_f=loss_PDE+Boundary_decay*loss_boundary
+            loss_f=loss_PDE+boundary_decay*loss_boundary
             loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
                                   output_fix=output_fix.view(batch_size,-1,in_size,in_size))
             
@@ -193,11 +219,15 @@ for epoch in range(epochs):
         losses['loss_boundary'][-1]/=len(train_loader)           
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
 
+
+        # after each epoch, we evaluate the model on the validation and train set       
+        # we only calculate relative error for these
         with torch.no_grad():
             model.eval()
             test_relative_l2 = 0.0
             train_relative_l2 = 0.0
 
+            # loop through the validation loader
             for step, (input_batch, output_batch) in enumerate(val_loader):
                 input_batch = input_batch.to(device)
                 output_batch = output_batch.to(device)
@@ -209,6 +239,7 @@ for epoch in range(epochs):
             test_relative_l2 /= len(val_loader)
             losses['loss_validation'].append(test_relative_l2)
 
+            # loop through the training loader
             for step, (input_batch, output_batch) in enumerate(train_loader):
                     input_batch = input_batch.to(device)
                     output_batch = output_batch.to(device)
@@ -245,10 +276,12 @@ for epoch in range(epochs):
             file.write("Params: " + str(n_params) + "\n")
         scheduler.step()
     
+    # early stopping
     if counter>patience:
         print("Early Stopping")
         break
 
+    # plot the losses
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 
     axes[0].grid(True, which="both", ls=":")

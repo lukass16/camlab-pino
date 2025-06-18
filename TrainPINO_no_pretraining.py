@@ -11,11 +11,17 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from Problems.FNOBenchmarks import SinFrequency
-from Physic_CNO.loss_functions.Relative_loss import Relative_loss
-from Physic_CNO.loss_functions.ModulePDELoss import Loss_PDE
-from Physic_CNO.helper_functions.Preconditioning import Unnormalize_for_testing, Normalize_for_testing, Precondition_output, Create_P
+from Physics_NO.loss_functions.Relative_loss import Relative_loss
+from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE
+from Physics_NO.helper_functions.Preconditioning import Unnormalize_for_testing, Normalize_for_testing, Precondition_output, Create_P
 
 
+"""-------------------------------Setting parameters for training--------------------------------"""
+'''
+Currently the code trains a purely physics informed model with an FNO
+
+
+'''
 if len(sys.argv) == 2:
 
     training_properties = {
@@ -25,9 +31,9 @@ if len(sys.argv) == 2:
         "scheduler_gamma": 0.98,
         "epochs": 100,
         "batch_size": 16,
-        "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
-        "training_samples": 128,  # How many training samples?
-        "boundary_decay":1,
+        "exp": 3,                # ! Do we use L1 or L2 errors? Default: L1 3 for smooth
+        "training_samples": 128,  # !How many training samples?
+        "boundary_decay":1, # ?
         "pad_factor": 0,
         "preconditoning": False
     }
@@ -51,7 +57,7 @@ if len(sys.argv) == 2:
     which_example = sys.argv[1]
 
     # Save the models here:
-    folder = "/cluster/scratch/harno/TrainedModels/"+"PINO_no_pretraining"+which_example
+    folder = "TrainedModels/"+"PINO_no_pretraining"+which_example
         
 else:
     
@@ -76,42 +82,43 @@ scheduler_step = training_properties["scheduler_step"]
 scheduler_gamma = training_properties["scheduler_gamma"]
 training_samples = training_properties["training_samples"]
 p = training_properties["exp"]
-lampda=training_properties['pde_decay']
-Boundary_decay=training_properties['boundary_decay']
+boundary_decay=training_properties['boundary_decay']
 pad_factor=training_properties['pad_factor']
-preconditioning=training_properties['precondtioning']
+preconditioning=training_properties['preconditoning']
 in_size=fno_architecture_["width"]
 
 if not os.path.isdir(folder):
     print("Generated new folder")
     os.mkdir(folder)
 
+# only used for preconditioning
 if preconditioning:
     print('Load P')
     P=Create_P(which_example=which_example,s=in_size,device=device,D=2)
 
+
+"""------------------------------------Load the data--------------------------------------"""
 if which_example == "poisson":
     example = SinFrequency(fno_architecture_, device, batch_size,training_samples)
 else:
-    raise ValueError("the variable which_example has to be one between darcy")
+    raise ValueError("Dataset type not found. Please choose between {poisson}")
 
-
+# save the training properties and the architecture
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
 df = pd.DataFrame.from_dict([fno_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
 
+"""------------------------------------Train--------------------------------------"""
 model = example.model
-
-
-#-----------------------------------Train--------------------------------------------
-
 n_params = model.print_size()
-train_loader = example.train_loader #TRAIN LOADER
-val_loader = example.val_loader #VALIDATION LOADER
+train_loader = example.train_loader
+val_loader = example.val_loader
 
-Normalization_values=train_loader.dataset.get_max_and_min() #Get max_min of the data
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
+
 
 if str(device) == 'cpu':
     print("------------------------------------------")
@@ -120,22 +127,26 @@ if str(device) == 'cpu':
     print("------------------------------------------")
     print(" ")
 
-
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
-
-patience = int(0.25 * epochs)
-best_model_testing_error = 300
-
-loss_relative=Relative_loss(pad_factor,in_size)
-loss_pde=Loss_PDE(which_example=which_example,Normalization_values=Normalization_values,p=p,\
-                  pad_factor=pad_factor,in_size=in_size,preconditioning=preconditioning,device=device)
+# deal with normalization # TODO See if we used normalization for other scripts
+Normalization_values=train_loader.dataset.get_max_and_min()
 unnormalize=Unnormalize_for_testing(which_example,Normalization_values)
 normalize=Normalize_for_testing(which_example,Normalization_values)
 
-counter = 0
+# define the loss functions
+loss_relative=Relative_loss(pad_factor,in_size) # smply function to calculate the relative error
+# get appropriate PI loss function based on dataset
+loss_pi=Loss_PDE(which_example=which_example,Normalization_values=Normalization_values,p=p,\
+                  pad_factor=pad_factor,in_size=in_size,preconditioning=preconditioning,device=device) 
 losses = {'loss_PDE': [], 'loss_boundary': [], 'loss total': [], 'loss_training': [], 'loss_validation':[]}
+
+
+patience = int(0.25 * epochs)
+best_model_testing_error = 300
+counter = 0
+
 for epoch in range(epochs):
+    
+    # each epoch
     with tqdm(unit="batch", disable=False) as tepoch:
         model.train()
         tepoch.set_description(f"Epoch {epoch}")
@@ -149,12 +160,12 @@ for epoch in range(epochs):
             output_batch = output_batch.to(device)
             output_pred_batch = model(input_batch)
 
-            loss_PDE, loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),output=output_pred_batch.view(batch_size,-1,in_size,in_size))
+            loss_pde, loss_boundary = loss_pi(input=input_batch.view(batch_size,-1,in_size,in_size),output=output_pred_batch.view(batch_size,-1,in_size,in_size))
 
-            loss_total=loss_PDE+Boundary_decay*loss_boundary
+            loss_total = loss_pde + boundary_decay*loss_boundary
 
-            losses['loss_PDE'][-1]     +=loss_PDE.item()      #values for plot
-            losses['loss_boundary'][-1]+=loss_boundary.item() #values for plot
+            losses['loss_PDE'][-1] += loss_pde.item()      #values for plot
+            losses['loss_boundary'][-1] += loss_boundary.item() #values for plot
             loss_total.backward()
             optimizer.step()
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
@@ -164,20 +175,24 @@ for epoch in range(epochs):
         losses['loss_PDE'][-1]/=len(train_loader)          
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
 
+        # after each epoch, we evaluate the model on the validation and train set       
         with torch.no_grad():
             model.eval()
             test_relative_l2 = 0.0
             train_relative_l2 = 0.0
 
+            # loop through the validation loader
             for step, (input_batch, output_batch) in enumerate(val_loader):
                     input_batch = input_batch.to(device)
                     output_batch = output_batch.to(device)
                     output_pred_batch = model(input_batch)
                     
+                    # preconditioning
                     if preconditioning:
                            output_pred_batch=unnormalize(output_pred_batch)
                            output_pred_batch=Precondition_output(output_pred_batch,P)
                            output_pred_batch=normalize(output_pred_batch)
+                    # preconditioning end
                     
                     loss_f=loss_relative(output_pred_batch.view(batch_size,-1,in_size,in_size),output_batch.view(batch_size,-1,in_size,in_size))
                     test_relative_l2 += loss_f.item()
@@ -185,6 +200,7 @@ for epoch in range(epochs):
             test_relative_l2 /= len(val_loader)
             losses['loss_validation'].append(test_relative_l2)
 
+            # loop through the training loader
             for step, (input_batch, output_batch) in enumerate(train_loader):
                     input_batch = input_batch.to(device)
                     output_batch = output_batch.to(device)
@@ -202,7 +218,7 @@ for epoch in range(epochs):
             losses['loss_training'].append(test_relative_l2)
             
             writer.add_scalar("train_loss/train_loss_rel", train_relative_l2, epoch)
-            writer.add_scalar("val_loss/val_loss", test_relative_l2, epoch)
+            writer.add_scalar("val_loss/val_loss_rel", test_relative_l2, epoch)
 
             if test_relative_l2 < best_model_testing_error:
                 best_model_testing_error = test_relative_l2
@@ -216,6 +232,7 @@ for epoch in range(epochs):
         tepoch.set_postfix({'Train loss': train_mse, "Relative Train": train_relative_l2, "Relative Val loss": test_relative_l2})
         tepoch.close()
         
+        # save the errors
         with open(folder + '/errors.txt', 'w') as file:
             file.write("Training Error: " + str(train_mse) + "\n")
             file.write("Best Testing Error: " + str(best_model_testing_error) + "\n")
@@ -223,11 +240,12 @@ for epoch in range(epochs):
             file.write("Params: " + str(n_params) + "\n")
         scheduler.step()
     
+    # early stopping
     if counter>patience:
         print("Early Stopping")
         break
 
-
+    # plot the losses
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
 
     axes[0].grid(True, which="both", ls=":")
@@ -256,7 +274,7 @@ if save_list:
     hfile.create_dataset("Boundary error", data=losses['loss_boundary'])
     hfile.create_dataset("Train error", data=losses['loss_training'])
     hfile.create_dataset("Validation error", data=losses['loss_validation'])
-    hfile.create_dataset("Boundary decay", data=Boundary_decay)
+    hfile.create_dataset("Boundary decay", data=boundary_decay)
     hfile.close()
 
 print('Finish')
