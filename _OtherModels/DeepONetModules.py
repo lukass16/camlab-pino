@@ -1,7 +1,7 @@
 import numpy as np
 import torch.nn as nn
 
-from debug_tools import *
+from utils.debug_tools import *
 
 
 def kaiming_init(m):

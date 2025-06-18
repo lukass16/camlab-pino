@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch
 #from debug_tools import *
 from training.filtered_networks import LReLu, LReLu_regular #Either "filtered LReLU" or regular LReLu
-from debug_tools import format_tensor_size
+from utils import format_tensor_size
 
 #------------------------------------------------------------------------------
 

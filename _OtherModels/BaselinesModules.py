@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from GeneralModules import activation, init_xavier
-from debug_tools import *
+from utils.debug_tools import *
 
 
 class Resnet(nn.Module):

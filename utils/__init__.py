@@ -14,6 +14,12 @@ from .custom_ops import (
     filtered_lrelu, 
     bias_act
 )
+from .debug_tools import (
+    format_mem,
+    format_tensor_size,
+    CudaMemoryDebugger,
+    print_tensor_mem
+)
 
 __all__ = [
     'EasyDict', 
@@ -25,5 +31,9 @@ __all__ = [
     'persistent_class',
     'conv2d_gradfix',
     'filtered_lrelu',
-    'bias_act'
+    'bias_act',
+    'format_mem',
+    'format_tensor_size', 
+    'CudaMemoryDebugger',
+    'print_tensor_mem'
 ] 

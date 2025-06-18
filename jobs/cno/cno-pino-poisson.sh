@@ -6,9 +6,9 @@
 #SBATCH --time=4:00:00
 #SBATCH --gpus-per-node=1
 #SBATCH --mem-per-cpu=2G
-#SBATCH --job-name=pino-cno-train
-#SBATCH --output=logs/pino-cno_%j.out
-#SBATCH --error=logs/pino-cno_%j.err
+#SBATCH --job-name=cno-pino-poisson
+#SBATCH --output=logs/cno-pino-poisson_%j.out
+#SBATCH --error=logs/cno-pino-poisson_%j.err
 
 
 # load modules
@@ -25,4 +25,4 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 nvidia-smi
 
 # Run training script
-python3 -u TrainCNO.py poisson
+python3 -u TrainPINO_CNO.py poisson

@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from debug_tools import format_tensor_size
+from utils import format_tensor_size
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
