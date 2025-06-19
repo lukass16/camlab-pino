@@ -74,7 +74,7 @@ copy of this License.
     immediately.
 
     3.5 Trademarks. This License does not grant any rights to use any
-    Licensor’s or its affiliates’ names, logos, or trademarks, except
+    Licensor's or its affiliates' names, logos, or trademarks, except
     as necessary to reproduce the notices described in this License.
 
     3.6 Termination. If you violate any term of this License, then your
@@ -116,7 +116,9 @@ import scipy.signal
 import scipy.optimize
 import torch
 from utils.torch_ops import assert_shape, persistent_class
-from utils.custom_ops import conv2d_gradfix, filtered_lrelu, bias_act
+from utils.ops import conv2d_gradfix
+from utils.ops import filtered_lrelu
+from utils.ops import bias_act
 
 import torch.nn.utils.parametrize as parametrize
 import torch.nn as nn

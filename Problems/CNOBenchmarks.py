@@ -259,9 +259,9 @@ class SinFrequencyDataset(Dataset):
         
         #The file: #! note: these have been updated from the original: PoissonData_PDEDomain2.h5
         if in_dist:
-            self.file_data = 'data/PoissonData_64x64_IN.h5'
+            self.file_data = '/cluster/home/lkellijs/camlab-pino/data/PoissonData_64x64_IN.h5'
         else:
-            self.file_data = 'data/PoissonData_64x64_OUT.h5'
+            self.file_data = '/cluster/home/lkellijs/camlab-pino/data/PoissonData_64x64_OUT.h5'
 
         #Load normalization constants from the TRAINING set:
         self.reader = h5py.File(self.file_data, 'r')

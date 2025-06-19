@@ -18,7 +18,7 @@ from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
 
 """-------------------------------Setting parameters for training--------------------------------"""
 '''
-Currently the code trains an FNO
+Currently the code trains an FNO with optional pretraining
 '''
 if len(sys.argv) == 2:
 
@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/FNO_poisson_tmp1",
+        "Path to pretrained model": "TrainedModels/FNO_1024poisson", # "TrainedModels/FNO_1024poisson"
         "Pretrained Samples":  1024,
     }
 
@@ -43,6 +43,17 @@ if len(sys.argv) == 2:
         "boundary_decay":1,
         "pad_factor": 0
     }
+
+    # FNO architecture (only used when training from scratch)
+    fno_architecture_ = {
+        "width": 64,
+        "modes": 16,
+        "FourierF" : 0, #Number of Fourier Features in the input channels. Default is 0.
+        "n_layers": 4, #Number of Fourier layers
+        "padding": 0,
+        "include_grid":1,
+        "retrain": 4, #Random seed
+    }
    
     #   "which_example" can be 
     
@@ -52,16 +63,22 @@ if len(sys.argv) == 2:
     
     which_example = sys.argv[1]
 
-    # Save the models here:
-    folder = "TrainedModels/"+"PINO_pretrained"+which_example
+    # if pretrained
+    if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+        folder = "TrainedModels/"+"PINO_FNO_pretrained"+which_example
+    else:
+        folder = "TrainedModels/"+"PINO_FNO_no_pretraining"+which_example
         
 else:
     
     # Do we use a script to run the code (for cluster):
     folder = sys.argv[1]
     training_properties = json.loads(sys.argv[2].replace("\'", "\""))
-    InfoPretrainedNetwork = json.loads(sys.argv[3].replace("\'", "\""))
-    which_example = sys.argv[4]
+    fno_architecture_ = json.loads(sys.argv[3].replace("\'", "\""))
+    InfoPretrainedNetwork = json.loads(sys.argv[4].replace("\'", "\""))
+    if InfoPretrainedNetwork["Path to pretrained model"]=='None':
+       InfoPretrainedNetwork["Path to pretrained model"]=None
+    which_example = sys.argv[5]
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -87,17 +104,20 @@ if not os.path.isdir(folder):
 
 
 """------------------------------------Load  pretrained model and data--------------------------------------"""
-# load the training properties and the architecture of the pretrained model
+# save the training properties and the architecture of the pretrained model
 df = pd.DataFrame.from_dict([training_properties]).T
 df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w')
-df = pd.DataFrame.from_dict([InfoPretrainedNetwork]).T
-df.to_csv(folder + '/InfoPretrainedNetwork.txt', header=False, index=True, mode='w')
-net_architucture_path = InfoPretrainedNetwork["Path to pretrained model"]+'/net_architecture.txt'
-df = pd.read_csv(net_architucture_path, header=None, index_col=0)
-fno_architecture_ = df.to_dict()[1]
-fno_architecture_ = {key: int(value) if str(value).isdigit() else float(value) if '.' in str(value) else value for key, value in df.to_dict()[1].items()}
-df = pd.DataFrame.from_dict([fno_architecture_]).T
-df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
+
+if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+    df = pd.DataFrame.from_dict([InfoPretrainedNetwork]).T
+    df.to_csv(folder + '/InfoPretrainedNetwork.txt', header=False, index=True, mode='w')
+    net_architucture_path = InfoPretrainedNetwork["Path to pretrained model"]+'/net_architecture.txt'
+    df = pd.read_csv(net_architucture_path, header=None, index_col=0)
+    fno_architecture_ = df.to_dict()[1]
+    fno_architecture_ = {key: int(value) if str(value).isdigit() else float(value) if '.' in str(value) else value for key, value in df.to_dict()[1].items()}
+    df = pd.DataFrame.from_dict([fno_architecture_]).T
+    df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
+
 in_size=fno_architecture_["width"]
 
 # load the data
@@ -117,30 +137,36 @@ df.to_csv(folder + '/training_properties.txt', header=False, index=True, mode='w
 df = pd.DataFrame.from_dict([fno_architecture_]).T
 df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
+# load the model
+model = example.model
 
-# load pretrained model
-pretrained_model_path = InfoPretrainedNetwork["Path to pretrained model"]+'/model.pkl'
-if not os.path.exists(pretrained_model_path):
-    raise FileNotFoundError(f"The model file '{pretrained_model_path}' does not exist.")
+if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+    pretrained_model_path = InfoPretrainedNetwork["Path to pretrained model"]+'/model.pkl'
+    if not os.path.exists(pretrained_model_path):
+        raise FileNotFoundError(f"The model file '{pretrained_model_path}' does not exist.")
 
-# 1 load the model for finetuning
-model = torch.load(pretrained_model_path, map_location=device, weights_only=False)
-# fix device mismatch
-if hasattr(model, 'device'):
-    model.device = device
-model = model.to(device)
+    # 1 load the model for finetuning
+    model = torch.load(pretrained_model_path, map_location=device, weights_only=False)
+    # fix device mismatch
+    if hasattr(model, 'device'):
+        model.device = device
+    model = model.to(device)
 
-# 2 load the anchor model (for the anchor loss)
-model_fix=torch.load(pretrained_model_path, map_location=device, weights_only=False)
-# fix device mismatch
-if hasattr(model_fix, 'device'):
-    model_fix.device = device
-model_fix = model_fix.to(device)
+    # 2 load the anchor model (for the anchor loss)
+    model_fix=torch.load(pretrained_model_path, map_location=device, weights_only=False)
+    # fix device mismatch
+    if hasattr(model_fix, 'device'):
+        model_fix.device = device
+    model_fix = model_fix.to(device)
 
-for param in model_fix.parameters():
-   param.requires_grad = False
+    for param in model_fix.parameters():
+       param.requires_grad = False
 
-print(f'Loading trained network from {pretrained_model_path}')
+    print(f'Loading trained network from {pretrained_model_path}')
+else:
+    print(f'Network is trained from scratch')
+    df = pd.DataFrame.from_dict([fno_architecture_]).T
+    df.to_csv(folder + '/net_architecture.txt', header=False, index=True, mode='w')
 
 
 """------------------------------------Train--------------------------------------"""
@@ -191,26 +217,30 @@ for epoch in range(epochs):
             output_batch = output_batch.to(device)
             output_pred_batch = model(input_batch)
             
-            # get the anchor output
-            with torch.no_grad():
-                 output_fix=model_fix(input_batch)
-            
             # get the loss
             loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
                                              output=output_pred_batch.view(batch_size,-1,in_size,in_size))
             loss_f=loss_PDE+boundary_decay*loss_boundary
-            loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
-                                  output_fix=output_fix.view(batch_size,-1,in_size,in_size))
             
-            loss_total=loss_op*lampda+loss_f
+            if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+                # get the anchor output
+                with torch.no_grad():
+                     output_fix=model_fix(input_batch)
+                
+                loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
+                                      output_fix=output_fix.view(batch_size,-1,in_size,in_size))
+                loss_total=loss_op*lampda+loss_f
+                losses['loss_OP'][-1] += loss_op.item()
+            else:
+                loss_total=loss_f
+                losses['loss_OP'][-1] += 0.0
 
             losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
             losses['loss_boundary'][-1]+=loss_boundary.item()  #values for plot
-            losses['loss_OP'][-1]      +=loss_op.item()        #values for plot
             loss_total.backward()
             optimizer.step()
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
-            train_op = train_op * step / (step + 1) + loss_op.item()/ (step + 1)
+            train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
             train_f = train_f * step / (step + 1) + loss_f.item() / (step + 1)
             tepoch.set_postfix({'Batch': step + 1, 'Train loss (in progress)': train_mse,'Operator loss': train_op,'PDE and Boundary loss': train_f})
 
@@ -252,7 +282,7 @@ for epoch in range(epochs):
                     loss_f = loss_relative(output_pred_batch.view(batch_size,-1,in_size,in_size),output_batch.view(batch_size,-1,in_size,in_size))
                     train_relative_l2 += loss_f.item()
             train_relative_l2 /= len(train_loader)
-            losses['loss_training'].append(test_relative_l2)
+            losses['loss_training'].append(train_relative_l2)
             
             writer.add_scalar("train_loss/train_loss_rel", train_relative_l2, epoch)
             writer.add_scalar("val_loss/val_loss", test_relative_l2, epoch)

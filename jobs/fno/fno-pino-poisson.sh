@@ -25,4 +25,4 @@ echo "CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
 nvidia-smi
 
 # Run training script
-python3 -u TrainPINO_pretrained.py poisson
+python3 -u TrainPINO_FNO.py poisson

@@ -26,8 +26,8 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None, 
-        "Pretrained Samples":  128,
+        "Path to pretrained model": "TrainedModels/CNO_1024poisson", 
+        "Pretrained Samples":  1024,
     }
     training_properties = {
         "learning_rate": 0.0003, 
@@ -37,7 +37,7 @@ if len(sys.argv) == 2:
         "epochs": 100,
         "batch_size": 16,
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
-        "training_samples": 128,  # How many training samples?
+        "training_samples": 1024,  # How many training samples?
         "pde_decay": 1,
         "boundary_decay":1,
         "pad_factor": 0 #0 if you dont want to pad the input
@@ -76,7 +76,11 @@ if len(sys.argv) == 2:
     which_example = sys.argv[1]
 
     # Save the models here:
-    folder = "TrainedModels/"+"PINO_CNO_"+which_example
+    # if pretrained
+    if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+        folder = "TrainedModels/"+"PINO_CNO_pretrained"+which_example
+    else:
+        folder = "TrainedModels/"+"PINO_CNO_no_pretraining"+which_example
         
 else:
     

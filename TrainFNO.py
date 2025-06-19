@@ -49,7 +49,7 @@ if len(sys.argv) == 2:
     #which_example = "shear_layer"
 
     # Save the models here:
-    folder = "TrainedModels/"+"FNO_"+which_example+"_tmp1"
+    folder = "TrainedModels/"+"FNO_"+str(training_properties["training_samples"])+which_example
 
 else:
     folder = sys.argv[1]
