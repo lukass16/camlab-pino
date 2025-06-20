@@ -319,7 +319,7 @@ class SinFrequency:
 #------------------------------------------------------------------------------
 
 #Wave data:
-#   From 0 to 512 : training samples (512)
+#   From 0 to 512 : training samples (512
 #   From 1024 to 1024 + 128 : validation samples (128)
 #   From 1024 + 128 to 1024 + 128 + 256 : test samples (256)
 #   Out-of-distribution testing samples: 0 to 256 (256)

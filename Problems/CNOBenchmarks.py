@@ -311,6 +311,7 @@ class SinFrequencyDataset(Dataset):
         inputs = torch.from_numpy(self.reader['Sample_' + str(index + self.start)]["input"][:]).type(torch.float32).reshape(1, self.s, self.s)
         labels = torch.from_numpy(self.reader['Sample_' + str(index + self.start)]["output"][:]).type(torch.float32).reshape(1, self.s, self.s)
 
+        # Normalize inputs and labels to [0, 1]
         inputs = (inputs - self.min_data)/(self.max_data - self.min_data)
         labels = (labels - self.min_model)/(self.max_model - self.min_model)
         

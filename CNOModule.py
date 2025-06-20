@@ -515,7 +515,7 @@ class CNO(nn.Module):
         del skip
         del y
         
-        return x
+        return x 
 
 
     def get_n_params(self):

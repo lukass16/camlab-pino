@@ -16,7 +16,7 @@ class Loss_PDE(nn.Module):
        self.unnormalize=Unnormalize(self.which_example,self.Normalization_values) # define our unnormalization function
        
        if which_example=='poisson':
-          self.D=2
+          self.D=1 # ! changed to 1 since we are using a [0,1] domain
           self.loss=Poisson_loss(p=self.p,D=self.D,in_size=self.in_size,pad_factor=self.pad_factor)
              
        elif which_example=='helmholtz':
@@ -124,7 +124,7 @@ class Poisson_loss(nn.Module):
 class Laplace(nn.Module):
     '''Calculates Laplace
     Input: u  Output of network, Shape = (Batch_size,Grid_size,Grid_size)
-    Ouput: \Delta u '''
+    Ouput: Delta u '''
     def __init__(self,s,D):
         super(Laplace,self).__init__()
         self.s=s
@@ -194,7 +194,7 @@ class Helmholtz_loss(nn.Module):
 class Inverse_Laplace(nn.Module):
     '''Calculates Inverse Laplace
     Input: torch.tensor of Shape = (Batch_size,Grid_size,Grid_size)
-    Ouput: 1/\Delta u '''
+    Ouput: 1/\ Delta u '''
     def __init__(self,s,D):
         super(Inverse_Laplace,self).__init__()
         self.s=s
