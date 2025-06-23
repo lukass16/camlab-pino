@@ -1,0 +1,38 @@
+================================================================================
+FOURIER-BASED LAPLACIAN EVALUATION RESULTS
+================================================================================
+
+Timestamp: 2025-06-23T11:27:34.678256
+Laplacian Method: Fourier-based (from ModulePDELoss.py)
+Model Type: CNO
+Grid Size: 64
+Device: cpu
+Total Samples Processed: 1024
+
+NORMALIZATION VALUES:
+  min_data: -4.160553649949067
+  max_data: 3.70910641377348
+  min_model: -0.0031903150044797863
+  max_model: 0.00332643191459189
+
+SUMMARY STATISTICS:
+--------------------------------------------------
+Average Relative Error:    5.438733e-01 ± 5.344559e-02
+Average Maximum Error:     4.080435e+00 ± 6.190300e-01
+Average Minimum Error:     2.998568e-07 ± 3.274655e-07
+Average Std Deviation:     3.507701e-01 ± 3.571218e-02
+
+DETAILED EXPLANATION:
+--------------------------------------------------
+For the Poisson equation -∇²u = f, we expect:
+  Input (f) ≈ -∇²(Label)
+
+The relative error is calculated as:
+  ||f - (-∇²u)||₂ / ||f||₂
+
+This evaluation uses the Fourier-based Laplacian implementation
+from the ModulePDELoss.py file, which uses FFT to compute derivatives.
+
+Lower relative errors indicate better agreement between
+the Fourier method and the expected physics.
+

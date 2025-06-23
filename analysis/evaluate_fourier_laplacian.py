@@ -24,8 +24,9 @@ BATCH_SIZE = 16
 TRAINING_SAMPLES = 1024
 
 # Add parent directory to path to import project modules
-if '..' not in sys.path:
-    sys.path.append('..')
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from Problems.CNOBenchmarks import SinFrequency as CNO_SinFrequency
 from Problems.FNOBenchmarks import SinFrequency as FNO_SinFrequency
@@ -87,7 +88,9 @@ def load_dataset(model_path, device, batch_size, training_samples):
 
 def main():
     # Default model path - modify as needed
-    model_path = "../TrainedModels/CNO_1024poisson"
+    # Construct path to model relative to this script's location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, "..", "TrainedModels", "CNO_1024poisson")
     
     print(f"Evaluating Fourier-based Laplacian Method")
     print(f"Device: {DEVICE}")

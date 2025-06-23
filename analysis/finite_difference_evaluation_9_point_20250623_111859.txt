@@ -1,0 +1,35 @@
+================================================================================
+FINITE DIFFERENCE LAPLACIAN EVALUATION RESULTS
+================================================================================
+
+Timestamp: 2025-06-23T11:18:59.980678
+Laplacian Type: 9-point
+Model Type: CNO
+Grid Size: 64
+Device: cpu
+Total Samples Processed: 1024
+
+NORMALIZATION VALUES:
+  min_data: -4.160553649949067
+  max_data: 3.70910641377348
+  min_model: -0.0031903150044797863
+  max_model: 0.00332643191459189
+
+SUMMARY STATISTICS:
+--------------------------------------------------
+Average Relative Error:    3.004584e-02 ± 1.486286e-03
+Average Maximum Error:     8.155495e-02 ± 1.120433e-02
+Average Minimum Error:     6.821536e-06 ± 6.717856e-06
+Average Std Deviation:     1.286928e-02 ± 9.484226e-04
+
+DETAILED EXPLANATION:
+--------------------------------------------------
+For the Poisson equation -∇²u = f, we expect:
+  Input (f) ≈ -∇²(Label)
+
+The relative error is calculated as:
+  ||f - (-∇²u)||₂ / ||f||₂
+
+Lower relative errors indicate better agreement between
+the finite difference method and the expected physics.
+

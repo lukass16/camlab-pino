@@ -39,7 +39,7 @@ if len(sys.argv) == 2:
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
         "training_samples": 1024,  # How many training samples?
         "pde_decay": 1,
-        "boundary_decay":1,
+        "boundary_decay":100,
         "pad_factor": 0 #0 if you dont want to pad the input
     }
  #---------- Add model Parameters for training form scratch----------------------
@@ -78,9 +78,9 @@ if len(sys.argv) == 2:
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO+_CNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO+B_CNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO+_CNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO+B_CNO_no_pretraining"+which_example
         
 else:
     

@@ -19,7 +19,7 @@ import json
 from datetime import datetime
 
 # Configuration flags - Set these at the top of the script
-LAPLACIAN_TYPE = "9-point"  # Options: "9-point", "9-point-OP", "13-point"
+LAPLACIAN_TYPE = "13-point"  # Options: "9-point", "9-point-OP", "13-point"
 DEVICE = 'cpu'  # Change to 'cuda' if GPU available
 BATCH_SIZE = 16
 TRAINING_SAMPLES = 1024
@@ -90,7 +90,9 @@ def load_dataset(model_path, device, batch_size, training_samples):
 
 def main():
     # Default model path - modify as needed
-    model_path = "../TrainedModels/CNO_1024poisson"
+    # Construct path to model relative to this script's location
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, "..", "TrainedModels", "CNO_1024poisson")
     
     print(f"Evaluating Finite Difference Laplacian Method")
     print(f"Laplacian Type: {LAPLACIAN_TYPE}")
@@ -229,7 +231,7 @@ def main():
     
     # Save results to file
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"finite_difference_evaluation_{LAPLACIAN_TYPE.replace('-', '_')}_{timestamp_str}.txt"
+    output_filename = f"/cluster/home/lkellijs/camlab-pino/analysis/finite_difference_evaluation_{LAPLACIAN_TYPE.replace('-', '_')}_{timestamp_str}.txt"
     
     with open(output_filename, 'w') as f:
         f.write("=" * 80 + "\n")

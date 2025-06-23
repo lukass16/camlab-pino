@@ -40,7 +40,7 @@ if len(sys.argv) == 2:
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "pde_decay": 1,
-        "boundary_decay":1,
+        "boundary_decay":100,
         "pad_factor": 0
     }
 
@@ -65,9 +65,9 @@ if len(sys.argv) == 2:
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO+_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO+B_FNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO+_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO+B_FNO_no_pretraining"+which_example
         
 else:
     
