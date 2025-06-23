@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None,
+        "Path to pretrained model": "TrainedModels/FNO_1024poisson",
         "Pretrained Samples":  1024,
     }
 
@@ -40,8 +40,9 @@ if len(sys.argv) == 2:
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "lambda": 1,
-        "boundary_weight":10,
-        "pad_factor": 0
+        "boundary_weight":100,
+        "pad_factor": 0,
+        "patience": 0.4 #patience for early stopping
     }
 
     # FNO architecture (only used when training from scratch)
@@ -65,9 +66,9 @@ if len(sys.argv) == 2:
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO+B_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO+BN_FNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO+B_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO+B100_FNO_no_pretraining"+which_example
         
 else:
     
@@ -194,7 +195,7 @@ Operator_loss=Loss_OP(p=p,in_size=in_size,pad_factor=pad_factor) # this is the a
 losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': [], 'loss_validation':[]}
 
 
-patience = int(0.25 * epochs)
+patience = int(training_properties["patience"] * epochs)
 best_model_testing_error = 300
 counter = 0
 
