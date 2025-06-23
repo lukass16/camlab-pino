@@ -78,9 +78,9 @@ if len(sys.argv) == 2:
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO_CNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO+_CNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO_CNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO+_CNO_no_pretraining"+which_example
         
 else:
     
@@ -274,7 +274,15 @@ for epoch in range(epochs):
         losses['loss_OP'][-1]/=len(train_loader)
         losses['loss_PDE'][-1]/=len(train_loader)
         losses['loss_boundary'][-1]/=len(train_loader)           
+        
+        # save the losses
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
+        # save the individual losses
+        writer.add_scalar("train_loss/train_loss_pde", losses['loss_PDE'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_boundary", losses['loss_boundary'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_op", losses['loss_OP'][-1], epoch)
+        
+        
 
 
         # after each epoch, we evaluate the model on the validation and train set       

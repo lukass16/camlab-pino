@@ -4,6 +4,8 @@ import sys
 sys.path.append('..')
 from Physics_NO.helper_functions.Preconditioning import Precondition_output, Create_P
 
+from FiniteDifferences import Laplace as FDLaplace
+
 class Loss_PDE(nn.Module):
     def __init__(self,which_example,Normalization_values,p,pad_factor,in_size,preconditioning=False,device='gpu'):
        super(Loss_PDE, self).__init__()
@@ -85,14 +87,14 @@ class Poisson_loss(nn.Module):
               p  Do we use L1 or L2 errors? Default: L1
               D  Period of Domain
        Warning: Input f and Output u should not be normalized!'''
-      def __init__(self,p=1,D=2,in_size=64,pad_factor=0):
+      def __init__(self,p=1,D=1.0,in_size=64,pad_factor=0):
            super(Poisson_loss,self).__init__()
            self.p=p
            self.in_size=in_size
            self.pad_factor=pad_factor
            self.original_input_size=self.in_size-self.pad_factor
            self.D=D+self.pad_factor/(self.in_size-self.pad_factor)*D
-           self.Laplace=Laplace(s=in_size,D=self.D)
+           self.Laplace=FDLaplace(s=in_size,D=self.D) #! changed to FDLaplace - testing Finite Diff Laplacian
 
            # choose what type of loss we want to use
            if p == 1:
@@ -107,16 +109,19 @@ class Poisson_loss(nn.Module):
       def forward(self,input,output): 
            input=input.squeeze(1)
            output=output.squeeze(1)
-           Laplace_u=self.Laplace(output) # get laplace of the output
+           Laplace_u, cut_size =self.Laplace(output) # get laplace of the output
            
-           loss_pde = self.loss(-Laplace_u[...,:self.original_input_size,:self.original_input_size],input) #note: we slice the last two spatial dimensions removing any padding
+           loss_pde = self.loss(-Laplace_u,input[...,cut_size:-cut_size,cut_size:-cut_size]) #note: we slice the last two spatial dimensions removing boundary
 
            #Add boundary loss: u=0 on boundary(Domain)
            boundary_lossx=self.loss(output[...,0,:],torch.zeros_like(output[...,0,:]).to(output[...,0,:].device))
            boundary_lossy=self.loss(output[...,:,0],torch.zeros_like(output[...,:,0]).to(output[...,:,0].device))
-           #! this is incomplete! We need to add the boundary loss for the other boundaries
            
-           boundary_loss=0.5*(boundary_lossx+boundary_lossy) # take average of the boundary losses for x and y directions
+           boundary_lossx_D=self.loss(output[...,-1,:],torch.zeros_like(output[...,-1,:]).to(output[...,-1,:].device)) #! added other boundary to also be 0
+           boundary_lossy_D=self.loss(output[...,:,-1],torch.zeros_like(output[...,:,-1]).to(output[...,:,-1].device)) #! added other boundary to also be 0
+           
+           
+           boundary_loss=0.25*(boundary_lossx+boundary_lossy+boundary_lossx_D+boundary_lossy_D) # take average of the boundary losses for x and y directions
            return loss_pde,boundary_loss
                           
 
@@ -194,7 +199,7 @@ class Helmholtz_loss(nn.Module):
 class Inverse_Laplace(nn.Module):
     '''Calculates Inverse Laplace
     Input: torch.tensor of Shape = (Batch_size,Grid_size,Grid_size)
-    Ouput: 1/\ Delta u '''
+    Ouput: 1/Delta u '''
     def __init__(self,s,D):
         super(Inverse_Laplace,self).__init__()
         self.s=s

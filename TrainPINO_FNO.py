@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/FNO_1024poisson", # "TrainedModels/FNO_1024poisson"
+        "Path to pretrained model": "TrainedModels/FNO_1024poisson",
         "Pretrained Samples":  1024,
     }
 
@@ -65,9 +65,9 @@ if len(sys.argv) == 2:
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO+_FNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO+_FNO_no_pretraining"+which_example
         
 else:
     
@@ -246,9 +246,14 @@ for epoch in range(epochs):
 
         losses['loss_OP'][-1]/=len(train_loader)
         losses['loss_PDE'][-1]/=len(train_loader)
-        losses['loss_boundary'][-1]/=len(train_loader)           
+        losses['loss_boundary'][-1]/=len(train_loader)     
+        
+        # save the losses
         writer.add_scalar("train_loss/train_loss", train_mse, epoch)
-
+        # save the individual losses
+        writer.add_scalar("train_loss/train_loss_pde", losses['loss_PDE'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_boundary", losses['loss_boundary'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_op", losses['loss_OP'][-1], epoch)
 
         # after each epoch, we evaluate the model on the validation and train set       
         # we only calculate relative error for these
@@ -281,7 +286,7 @@ for epoch in range(epochs):
                     
                     loss_f = loss_relative(output_pred_batch.view(batch_size,-1,in_size,in_size),output_batch.view(batch_size,-1,in_size,in_size))
                     train_relative_l2 += loss_f.item()
-            train_relative_l2 /= len(train_loader)
+            train_relative_l2 /= len(train_loader) # take the average of the losses
             losses['loss_training'].append(train_relative_l2)
             
             writer.add_scalar("train_loss/train_loss_rel", train_relative_l2, epoch)
