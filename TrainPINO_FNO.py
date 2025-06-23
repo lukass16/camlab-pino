@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/FNO_1024poisson",
+        "Path to pretrained model": None,
         "Pretrained Samples":  1024,
     }
 
@@ -39,8 +39,8 @@ if len(sys.argv) == 2:
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
-        "pde_decay": 1,
-        "boundary_decay":100,
+        "lambda": 1,
+        "boundary_weight":10,
         "pad_factor": 0
     }
 
@@ -93,8 +93,8 @@ scheduler_step = training_properties["scheduler_step"]
 scheduler_gamma = training_properties["scheduler_gamma"]
 training_samples = training_properties["training_samples"]
 p = training_properties["exp"]
-lampda=training_properties['pde_decay']
-boundary_decay=training_properties['boundary_decay']
+lampda=training_properties['lambda']
+boundary_weight=training_properties['boundary_weight']
 pad_factor=training_properties['pad_factor']
 
 
@@ -220,7 +220,7 @@ for epoch in range(epochs):
             # get the loss
             loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
                                              output=output_pred_batch.view(batch_size,-1,in_size,in_size))
-            loss_f=loss_PDE+boundary_decay*loss_boundary
+            loss_f=loss_PDE+boundary_weight*loss_boundary
             
             if InfoPretrainedNetwork["Path to pretrained model"] is not None:
                 # get the anchor output
@@ -236,7 +236,7 @@ for epoch in range(epochs):
                 losses['loss_OP'][-1] += 0.0
 
             losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
-            losses['loss_boundary'][-1]+=loss_boundary.item()  #values for plot
+            losses['loss_boundary'][-1]+=boundary_weight*loss_boundary.item()  #values for plot
             loss_total.backward()
             optimizer.step()
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
