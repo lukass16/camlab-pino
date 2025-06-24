@@ -47,7 +47,7 @@ if len(sys.argv) == 2:
 
     # FNO architecture (only used when training from scratch)
     fno_architecture_ = {
-        "width": 64,
+        "width": 128, # Resolution of the computational grid
         "modes": 16,
         "FourierF" : 0, #Number of Fourier Features in the input channels. Default is 0.
         "n_layers": 4, #Number of Fourier layers

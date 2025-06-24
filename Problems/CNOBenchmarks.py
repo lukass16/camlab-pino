@@ -560,7 +560,7 @@ class HelmholtzDataset(Dataset):
         
     def get_max_and_min(self):
         Normalization_values= {
-        "mean_data": 1,
+        "mean_data": 1, # part of the logic of removing/adding 1 to the coefficient field a
         "mean_model":self.mean ,
         "std_model": self.std
          }

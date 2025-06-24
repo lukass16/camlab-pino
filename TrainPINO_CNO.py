@@ -54,7 +54,7 @@ if len(sys.argv) == 2:
         "N_res_neck" : 5,         # Number of (R) blocks in the BN
         
         #Other parameters:
-        "in_size": 64,            # Resolution of the computational grid
+        "in_size": 128,            # Resolution of the computational grid
         "retrain": 4,             # Random seed
         "kernel_size": 3,         # Kernel size.
         "FourierF": 0,            # Number of Fourier Features in the input channels. Default is 0.

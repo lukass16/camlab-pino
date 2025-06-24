@@ -181,6 +181,7 @@ class Helmholtz_loss(nn.Module):
            output=output.squeeze(1)
            boundary=input[:,1,0,0].unsqueeze(-1)
            
+           # match the boundary to the coundary conditions
            boundary_lossx_0=self.loss(output[...,0,:self.original_input_size],  torch.mul(boundary,torch.ones_like(output[...,0,:self.original_input_size])))
            boundary_lossy_0=self.loss(output[...,:self.original_input_size,0],  torch.mul(boundary,torch.ones_like(output[...,:self.original_input_size,0])))
        
@@ -188,8 +189,10 @@ class Helmholtz_loss(nn.Module):
            boundary_lossy_D=self.loss(output[...,:self.original_input_size,-1-self.pad_factor], torch.mul(boundary,torch.ones_like(output[...,:self.original_input_size,-1-self.pad_factor])))
            boundary_loss=0.25*(boundary_lossx_0+boundary_lossy_0+boundary_lossx_D+boundary_lossy_D)
        
-           Laplace_u=self.Laplace(output)
+           # calculate the laplace of the output
+           Laplace_u=self.Laplace(output)	
 
+           # calculate the pde loss (Laplace_u = -omega^2 * a^2 * output)
            loss_pde=self.loss(Laplace_u[...,:self.original_input_size,:self.original_input_size],\
                             -self.omega**2*a[...,:self.original_input_size,:self.original_input_size]**2*output[...,:self.original_input_size,:self.original_input_size])
        
