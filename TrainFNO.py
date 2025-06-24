@@ -8,7 +8,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from Problems.FNOBenchmarks import Darcy, Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer
+from Problems.FNOBenchmarks import Darcy, Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer, Helmholtz
 
 
 """-------------------------------Setting parameters for training--------------------------------"""
@@ -44,6 +44,7 @@ if len(sys.argv) == 2:
     #   shear_layer         : Navier-Stokes equations
     #   airfoil             : Compressible Euler equations
     #   darcy               : Darcy Flow
+    #   helmholtz           : Helmholtz equation
     
     which_example = sys.argv[1]
     #which_example = "shear_layer"
@@ -92,8 +93,10 @@ elif which_example == "airfoil":
 
 elif which_example == "darcy":
     example = Darcy(fno_architecture_, device, batch_size,training_samples)
+elif which_example == "helmholtz":
+    example = Helmholtz(fno_architecture_, device, batch_size, training_samples)
 else:
-    raise ValueError("the variable which_example has to be one between darcy")
+    raise ValueError("the variable which_example has to be one of: shear_layer, poisson, wave_0_5, allen, cont_tran, disc_tran, airfoil, darcy, helmholtz")
 
 if not os.path.isdir(folder):
     print("Generated new folder")

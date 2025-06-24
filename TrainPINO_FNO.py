@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from Problems.FNOBenchmarks import SinFrequency
+from Problems.FNOBenchmarks import SinFrequency, Helmholtz
 from Physics_NO.loss_functions.Relative_loss import Relative_loss
 from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
 
@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/FNO_1024poisson",
+        "Path to pretrained model": None,
         "Pretrained Samples":  1024,
     }
 
@@ -66,9 +66,9 @@ if len(sys.argv) == 2:
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO+BN_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO_FNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO+B100_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO_FNO_no_pretraining"+which_example
         
 else:
     
@@ -124,8 +124,10 @@ in_size=fno_architecture_["width"]
 # load the data
 if which_example == "poisson":
     example = SinFrequency(fno_architecture_, device, batch_size,training_samples)
+elif which_example == "helmholtz":
+    example = Helmholtz(fno_architecture_, device, batch_size, training_samples)
 else:
-    raise ValueError("Dataset type not found. Please choose between {poisson}")
+    raise ValueError("Dataset type not found. Please choose between {poisson, helmholtz}")
 
 # create the model folder
 if not os.path.isdir(folder):

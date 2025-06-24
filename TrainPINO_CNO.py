@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/CNO_1024poisson", 
+        "Path to pretrained model": None, 
         "Pretrained Samples":  1024,
     }
     training_properties = {
@@ -79,9 +79,9 @@ if len(sys.argv) == 2:
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO+BN_CNO_pretrained"+which_example
+        folder = "TrainedModels/"+"PINO_CNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO+B100_CNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+"PINO_CNO_no_pretraining"+which_example
         
 else:
     

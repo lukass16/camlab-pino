@@ -14,6 +14,8 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 
+# Set the data folder path
+data_folder = "/cluster/home/lkellijs/camlab-pino/data/"
 
 #------------------------------------------------------------------------------
 
@@ -267,7 +269,7 @@ class SinFrequencyDataset(Dataset):
             ff_grid = ff_grid.permute(2, 0, 1)
             inputs = torch.cat((inputs, ff_grid), 0)
 
-        return inputs.permute(1, 2, 0), labels.permute(1, 2, 0)
+        return inputs.permute(1, 2, 0), labels.permute(1, 2, 0) # for FNO dataset we need to permute the dimensions to match the FNO2d input format
     
     def get_max_and_min(self):
         Normalization_values= {
@@ -915,3 +917,164 @@ class Darcy:
         self.train_loader = DataLoader(DarcyDataset("training", self.N_Fourier_F, training_samples), batch_size=batch_size, shuffle=True, num_workers=num_workers)
         self.val_loader = DataLoader(DarcyDataset("validation", self.N_Fourier_F, training_samples), batch_size=batch_size, shuffle=True, num_workers=num_workers)
         self.test_loader = DataLoader(DarcyDataset("testing", self.N_Fourier_F, training_samples, in_dist), batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+#Helmholtz data
+#   From 0 to training_samples : training samples
+#   From N_max - 256 - 256 to N_max - 256 : validation samples (256)
+#   From N_max - 256 to N_max : test samples (256)
+#   Out-of-distribution testing samples: 0 to 128 (128)
+
+class HelmholtzDataset(Dataset):
+    def __init__(self, which="training", nf = 0, training_samples = 1024, in_dist = True, N_max =19675, cluster = True, pad_factor=0):
+        
+        self.N_max = N_max
+        self.which = which
+        self.pad_factor = pad_factor
+        
+        if self.N_max == 19675:
+            self.mean = 0.11523915668552
+            self.std = 0.8279975746000605
+            self.file_data = data_folder + "Helmholtz/Helmholtz.h5"
+        else:
+            print("No data file found for N_max = 19675, please check if using the correct dataset and be careful with the normalization values")
+
+        self.reader = h5py.File(self.file_data, 'r')        
+
+        assert training_samples < self.N_max - 256 - 256
+        
+        if which == "training":
+            self.length = training_samples
+            self.start = 0
+        elif which == "validation":
+            self.length = 256
+            self.start = self.N_max - 256 - 256
+        elif which == "test":
+            if in_dist:
+                self.length = 256
+                self.start = self.N_max - 256
+            else:
+                self.length = 128
+                self.start = 0
+
+        #If the reader changed:
+        self.reader = h5py.File(self.file_data, 'r') 
+        
+        #Default:
+        self.N_Fourier_F = nf
+        
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+
+        inputs = torch.from_numpy(self.reader['Sample_' + str(index + self.start)]["a"][:]).type(torch.float32).reshape(1, 128, 128)
+        inputs = inputs - 1
+        
+        if self.pad_factor != 0:
+            inputs = self.transform_zero(input=inputs, pad_factor=self.pad_factor)
+           
+        labels = self.reader['Sample_' + str(index + self.start)]["u"][:]
+        labels = (labels - self.mean) / self.std
+        labels = torch.from_numpy(labels).type(torch.float32).reshape(1, 128, 128)
+        
+        if self.N_Fourier_F > 0:
+            grid = self.get_grid()
+            FF = FourierFeatures(1, self.N_Fourier_F, grid.device)
+            ff_grid = FF(grid)
+            ff_grid = ff_grid.permute(2, 0, 1)
+            inputs = torch.cat((inputs, ff_grid), 0)
+        
+        b = torch.from_numpy(np.array(self.reader['Sample_' + str(index + self.start)]["bc"])).to(torch.float32)
+        bc = torch.ones_like(inputs) * b
+        inputs = torch.cat((inputs, bc), 0)
+        
+        # For FNO: permute to (H, W, C) format
+        return inputs.permute(1, 2, 0), labels.permute(1, 2, 0)
+    
+    def transform_zero(self, input, pad_factor):
+        #boundary_pad
+        shape = input.shape
+        input_pad = torch.zeros((*shape[0:-2], shape[-2]+pad_factor, shape[-1]+pad_factor))
+        input_pad[...,:shape[-2],:shape[-1]] = input
+        return input_pad
+        
+    def get_max_and_min(self):
+        Normalization_values = {
+            "mean_data": 1,
+            "mean_model": self.mean,
+            "std_model": self.std
+        }
+        return Normalization_values    
+    
+    def get_grid(self):
+        s = 128
+        x = torch.linspace(0, 1, s)
+        y = torch.linspace(0, 1, s)
+
+        x_grid, y_grid = torch.meshgrid(x, y)
+
+        x_grid = x_grid.unsqueeze(-1)
+        y_grid = y_grid.unsqueeze(-1)
+        grid = torch.cat((x_grid, y_grid), -1)
+        return grid
+
+
+class Helmholtz:
+    def __init__(self, network_properties, device, batch_size, training_samples = 1024, s = 128, in_dist = True, N_max =19675, cluster = True, pad_factor=0):
+        
+        network_properties = default_param(network_properties)
+        self.N_Fourier_F = network_properties["FourierF"]
+        
+        retrain = network_properties["retrain"]
+        torch.manual_seed(retrain)
+        
+        #----------------------------------------------------------------------
+        
+        in_dim = 2  # coefficient field + boundary conditions
+        
+        self.model = FNO2d(fno_architecture = network_properties, 
+                            in_channels = in_dim + 2 * self.N_Fourier_F, 
+                            out_channels = 1, 
+                            device=device)        
+
+        #----------------------------------------------------------------------
+        
+        #Change number of workers accoirding to your preference
+        num_workers = 0
+
+        self.train_loader = DataLoader(HelmholtzDataset(which = "training", 
+                                                        nf = self.N_Fourier_F, 
+                                                        training_samples= training_samples, 
+                                                        in_dist=in_dist,
+                                                        N_max= N_max,
+                                                        cluster=cluster,
+                                                        pad_factor=pad_factor), 
+                                        batch_size=batch_size, 
+                                        shuffle=True, 
+                                        num_workers=num_workers)
+        
+        self.val_loader = DataLoader(HelmholtzDataset(which = "validation", 
+                                                        nf = self.N_Fourier_F, 
+                                                        training_samples= training_samples, 
+                                                        in_dist=in_dist,
+                                                        N_max= N_max,
+                                                        cluster=cluster,
+                                                        pad_factor=pad_factor), 
+                                        batch_size=batch_size, 
+                                        shuffle=False, 
+                                        num_workers=num_workers)
+
+        self.test_loader = DataLoader(HelmholtzDataset(which = "test", 
+                                                        nf = self.N_Fourier_F, 
+                                                        training_samples= training_samples, 
+                                                        in_dist=in_dist,
+                                                        N_max= N_max,
+                                                        cluster=cluster,
+                                                        pad_factor=pad_factor), 
+                                        batch_size=batch_size, 
+                                        shuffle=False, 
+                                        num_workers=num_workers)

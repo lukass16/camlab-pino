@@ -255,6 +255,12 @@ class ShearLayer:
 
 class SinFrequencyDataset(Dataset):
     def __init__(self, which="training", nf=0, training_samples = 1024, s=64, in_dist = True):
+        '''
+            nf: number of Fourier features
+            training_samples: number of training samples
+            s: spatial resolution
+            in_dist: whether to use in-distribution data
+        '''
         
         
         #The file: #! note: these have been updated from the original: PoissonData_PDEDomain2.h5
