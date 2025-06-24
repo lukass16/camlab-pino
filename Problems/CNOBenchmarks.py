@@ -469,17 +469,17 @@ class HelmholtzDataset(Dataset):
             self.mean = 0.236221626070
             self.std = 2.147599637905932
             if cluster:
-                self.file_data = data_folder + "HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
+                self.file_data = data_folder + "Helmholtz/Helmholtz.h5"
             else:
-                self.file_data = data_folder + "HelmotzData_FixedBC1_4shapes_fixed_w_processed_2.h5"
+                self.file_data = data_folder + "Helmholtz/Helmholtz.h5"
 
         elif self.N_max == 19675:
             self.mean = 0.11523915668552
             self.std = 0.8279975746000605
             if cluster:
-                self.file_data = data_folder + "HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
+                self.file_data = data_folder + "Helmholtz/Helmholtz.h5"
             else:
-                self.file_data = data_folder + "HelmotzData_VaryingBC02501_2to8bumbs_w5over2pi_processed.h5"
+                self.file_data = data_folder + "Helmholtz/Helmholtz.h5"
 
         self.reader = h5py.File(self.file_data, 'r')        
 
