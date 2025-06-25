@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None,
+        "Path to pretrained model": "TrainedModels/helmholtz/FNO_1024helmholtz",
         "Pretrained Samples":  1024,
     }
 
@@ -40,7 +40,7 @@ if len(sys.argv) == 2:
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "lambda": 1,
-        "boundary_weight":100,
+        "boundary_weight":1,
         "pad_factor": 0,
         "patience": 0.4 #patience for early stopping
     }
@@ -66,9 +66,9 @@ if len(sys.argv) == 2:
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+B=1_FNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+B=1_FNO_no_pretraining"+which_example
         
 else:
     
@@ -192,7 +192,7 @@ if str(device) == 'cpu':
 # define the loss functions
 loss_relative=Relative_loss(pad_factor,in_size)
 loss_pde     =Loss_PDE(which_example=which_example,Normalization_values=Normalization_values,p=p,\
-                       pad_factor=pad_factor,in_size=in_size,device=device)
+                       pad_factor=pad_factor,in_size=in_size)
 Operator_loss=Loss_OP(p=p,in_size=in_size,pad_factor=pad_factor) # this is the anchor loss
 losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': [], 'loss_validation':[]}
 
@@ -220,7 +220,7 @@ for epoch in range(epochs):
             output_batch = output_batch.to(device)
             output_pred_batch = model(input_batch)
             
-            # get the loss
+            # get the loss (convert to shapes (B, 2, H, W) and (B, 1, H, W))
             loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
                                              output=output_pred_batch.view(batch_size,-1,in_size,in_size))
             loss_f=loss_PDE+boundary_weight*loss_boundary
@@ -233,7 +233,7 @@ for epoch in range(epochs):
                 loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
                                       output_fix=output_fix.view(batch_size,-1,in_size,in_size))
                 loss_total=loss_op*lampda+loss_f
-                losses['loss_OP'][-1] += loss_op.item()
+                losses['loss_OP'][-1] += loss_op.item()*lampda
             else:
                 loss_total=loss_f
                 losses['loss_OP'][-1] += 0.0

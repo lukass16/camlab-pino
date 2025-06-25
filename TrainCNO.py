@@ -66,7 +66,7 @@ if len(sys.argv) == 2:
 
     # Save the models here:
     training_samples=training_properties["training_samples"]
-    folder = "/cluster/home/lkellijs/camlab-pino/TrainedModels/"+"CNO_"+str(training_samples)+which_example #! Change this to your own path
+    folder = "/cluster/home/lkellijs/camlab-pino/TrainedModels/"+which_example+"/CNO_"+str(training_samples)+which_example #! Change this to your own path
         
 else:
     

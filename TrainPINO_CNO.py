@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None, 
+        "Path to pretrained model": "TrainedModels/helmholtz/CNO_1024helmholtz", 
         "Pretrained Samples":  1024,
     }
     training_properties = {
@@ -38,8 +38,8 @@ if len(sys.argv) == 2:
         "batch_size": 16,
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
         "training_samples": 1024,  # How many training samples?
-        "lambda": 1,
-        "boundary_weight":100,
+        "lambda": 100,
+        "boundary_weight":10,
         "pad_factor": 0, #0 if you dont want to pad the input
         "patience": 0.4 #patience for early stopping
     }
@@ -79,9 +79,9 @@ if len(sys.argv) == 2:
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+"PINO_CNO_pretrained"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_CNO_pretrained"+which_example
     else:
-        folder = "TrainedModels/"+"PINO_CNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_CNO_no_pretraining"+which_example
         
 else:
     
@@ -258,7 +258,7 @@ for epoch in range(epochs):
                     output_fix=model_fix(input_batch)
                 loss_op=Operator_loss(output_train=output_pred_batch,output_fix=output_fix)
                 loss_total=loss_op*lampda+loss_f
-                losses['loss_OP'][-1] += loss_op.item()
+                losses['loss_OP'][-1] += loss_op.item()*lampda
             else:
                 loss_total=loss_f
                 losses['loss_OP'][-1] += 0.0

@@ -25,7 +25,7 @@ if len(sys.argv) == 2:
         "training_samples": 1024,
     }
     fno_architecture_ = {
-        "width": 64,
+        "width": 128,
         "modes": 16,
         "FourierF" : 0, #Number of Fourier Features in the input channels. Default is 0.
         "n_layers": 4, #Number of Fourier layers
@@ -50,7 +50,7 @@ if len(sys.argv) == 2:
     #which_example = "shear_layer"
 
     # Save the models here:
-    folder = "TrainedModels/"+"FNO_"+str(training_properties["training_samples"])+which_example
+    folder = "TrainedModels/"+which_example+"/FNO_"+str(training_properties["training_samples"])+which_example
 
 else:
     folder = sys.argv[1]
