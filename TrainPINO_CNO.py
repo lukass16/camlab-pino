@@ -26,7 +26,7 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/helmholtz/CNO_1024helmholtz", 
+        "Path to pretrained model": None, #"TrainedModels/helmholtz/CNO_1024helmholtz", 
         "Pretrained Samples":  1024,
     }
     training_properties = {
@@ -34,14 +34,14 @@ if len(sys.argv) == 2:
         "weight_decay": 1e-10,
         "scheduler_step": 10,
         "scheduler_gamma": 0.98,
-        "epochs": 100,
+        "epochs": 5,
         "batch_size": 16,
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
         "training_samples": 1024,  # How many training samples?
         "lambda": 100,
-        "boundary_weight":10,
+        "boundary_weight":1, #! changed from 10 for the test
         "pad_factor": 0, #0 if you dont want to pad the input
-        "patience": 0.4 #patience for early stopping
+        "patience": 1.0 #patience for early stopping - usually 0.4 #! changed for the test
     }
  #---------- Add model Parameters for training form scratch----------------------
  #model_architecture_ is only relevant if Path to pretrained model==None!!
@@ -75,13 +75,15 @@ if len(sys.argv) == 2:
     #   helmholtz           : Helmholtz equation
     
     which_example = sys.argv[1]
+    
+    CUSTOM_FLAG = "_start_debug" #! changed for the test
 
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+which_example+"/PINO+_CNO_pretrained"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_CNO_pretrained"+which_example+CUSTOM_FLAG
     else:
-        folder = "TrainedModels/"+which_example+"/PINO+_CNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_CNO_no_pretraining"+which_example+CUSTOM_FLAG
         
 else:
     
@@ -238,6 +240,68 @@ for epoch in range(epochs):
         losses['loss_boundary'].append(0)
         running_relative_train_mse = 0.0
         
+        
+        """------------------------------------Validation--------------------------------------"""
+        # after each epoch, we evaluate the model on the validation and train set       
+        # we only calculate relative error for these
+        with torch.no_grad():
+            model.eval()
+            test_relative_l2 = 0.0
+            train_relative_l2 = 0.0
+
+            # loop through the validation loader
+            for step, (input_batch, output_batch) in enumerate(val_loader):
+                input_batch = input_batch.to(device)
+                output_batch = output_batch.to(device)
+                output_pred_batch = model(input_batch)
+                
+                if which_example == "airfoil": #Mask the airfoil shape
+                    output_pred_batch[input_batch==1] = 1
+                    output_batch[input_batch==1] = 1
+                
+                loss_f=loss_relative(output_pred_batch,output_batch)
+                test_relative_l2 += loss_f.item()
+            test_relative_l2 /= len(val_loader)
+            losses['loss_validation'].append(test_relative_l2)
+
+            # loop through the training loader
+            for step, (input_batch, output_batch) in enumerate(train_loader):
+                    input_batch = input_batch.to(device)
+                    output_batch = output_batch.to(device)
+                    output_pred_batch = model(input_batch)
+                    
+                    if which_example == "airfoil": #Mask the airfoil shape
+                        output_pred_batch[input_batch==1] = 1
+                        output_batch[input_batch==1] = 1
+                    
+                    loss_f = loss_relative(output_pred_batch,output_batch)
+                    train_relative_l2 += loss_f.item()
+            train_relative_l2 /= len(train_loader)
+            losses['loss_training'].append(train_relative_l2)
+            
+            writer.add_scalar("train_loss/train_loss_rel", train_relative_l2, epoch)
+            writer.add_scalar("val_loss/val_loss", test_relative_l2, epoch)
+            
+            if test_relative_l2 < best_model_testing_error:
+                best_model_testing_error = test_relative_l2
+                best_model = copy.deepcopy(model)
+                torch.save(best_model, folder + "/model.pkl")
+                writer.add_scalar("val_loss/Best Relative Testing Error", best_model_testing_error, epoch)
+                counter = 0
+            else:
+                counter +=1 # increment early stopping counter
+
+            # write debug file #! DEBUG
+            epoch_num = epoch
+            with open(folder + '/debug.txt', 'a') as file:
+                file.write(f"Epoch: {epoch_num}\n")
+                file.write(f"Train loss: {train_relative_l2}\n")
+                file.write(f"Validation loss: {test_relative_l2}\n")
+                file.write(f"Best model testing error: {best_model_testing_error}\n")
+                
+        """------------------------------------------------------------------------------------------------"""
+
+        
         # loop through the training loader
         for step, (input_batch, _) in enumerate(train_loader):
             optimizer.zero_grad()
@@ -284,57 +348,7 @@ for epoch in range(epochs):
         writer.add_scalar("train_loss/train_loss_op", losses['loss_OP'][-1], epoch)
         
         
-
-
-        # after each epoch, we evaluate the model on the validation and train set       
-        # we only calculate relative error for these
-        with torch.no_grad():
-            model.eval()
-            test_relative_l2 = 0.0
-            train_relative_l2 = 0.0
-
-            # loop through the validation loader
-            for step, (input_batch, output_batch) in enumerate(val_loader):
-                input_batch = input_batch.to(device)
-                output_batch = output_batch.to(device)
-                output_pred_batch = model(input_batch)
-                
-                if which_example == "airfoil": #Mask the airfoil shape
-                    output_pred_batch[input_batch==1] = 1
-                    output_batch[input_batch==1] = 1
-                
-                loss_f=loss_relative(output_pred_batch,output_batch)
-                test_relative_l2 += loss_f.item()
-            test_relative_l2 /= len(val_loader)
-            losses['loss_validation'].append(test_relative_l2)
-
-            # loop through the training loader
-            for step, (input_batch, output_batch) in enumerate(train_loader):
-                    input_batch = input_batch.to(device)
-                    output_batch = output_batch.to(device)
-                    output_pred_batch = model(input_batch)
-                    
-                    if which_example == "airfoil": #Mask the airfoil shape
-                        output_pred_batch[input_batch==1] = 1
-                        output_batch[input_batch==1] = 1
-                    
-                    loss_f = loss_relative(output_pred_batch,output_batch)
-                    train_relative_l2 += loss_f.item()
-            train_relative_l2 /= len(train_loader)
-            losses['loss_training'].append(train_relative_l2)
             
-            writer.add_scalar("train_loss/train_loss_rel", train_relative_l2, epoch)
-            writer.add_scalar("val_loss/val_loss", test_relative_l2, epoch)
-
-            if test_relative_l2 < best_model_testing_error:
-                best_model_testing_error = test_relative_l2
-                best_model = copy.deepcopy(model)
-                torch.save(best_model, folder + "/model.pkl")
-                writer.add_scalar("val_loss/Best Relative Testing Error", best_model_testing_error, epoch)
-                counter = 0
-            else:
-                counter +=1 # increment early stopping counter
-
         tepoch.set_postfix({'Train loss': train_mse, "Relative Train": train_relative_l2, "Relative Val loss": test_relative_l2})
         tepoch.close()
         

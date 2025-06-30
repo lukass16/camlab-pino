@@ -35,14 +35,14 @@ if len(sys.argv) == 2:
         "weight_decay": 1e-10,
         "scheduler_step": 10,
         "scheduler_gamma": 0.98,
-        "epochs": 100,
+        "epochs": 10,   #! changed for the test
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
-        "lambda": 1,
+        "lambda": 100,
         "boundary_weight":1,
         "pad_factor": 0,
-        "patience": 0.4 #patience for early stopping
+        "patience": 1.0 #patience for early stopping  - usually 0.4 #! changed for the test
     }
 
     # FNO architecture (only used when training from scratch)
@@ -63,12 +63,14 @@ if len(sys.argv) == 2:
     #   helmholtz           : Helmholtz equation
     
     which_example = sys.argv[1]
+    
+    CUSTOM_FLAG = "_start_debug" #! changed for the test
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+which_example+"/PINO+B=1_FNO_pretrained"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_FNO_pretrained"+which_example+CUSTOM_FLAG
     else:
-        folder = "TrainedModels/"+which_example+"/PINO+B=1_FNO_no_pretraining"+which_example
+        folder = "TrainedModels/"+which_example+"/PINO+_FNO_no_pretraining"+which_example+CUSTOM_FLAG
         
 else:
     
@@ -213,51 +215,9 @@ for epoch in range(epochs):
         losses['loss_boundary'].append(0)
         running_relative_train_mse = 0.0
         
-        # loop through the training loader
-        for step, (input_batch, output_batch) in enumerate(train_loader):
-            optimizer.zero_grad()
-            input_batch = input_batch.to(device)
-            output_batch = output_batch.to(device)
-            output_pred_batch = model(input_batch)
-            
-            # get the loss (convert to shapes (B, 2, H, W) and (B, 1, H, W))
-            loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
-                                             output=output_pred_batch.view(batch_size,-1,in_size,in_size))
-            loss_f=loss_PDE+boundary_weight*loss_boundary
-            
-            if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-                # get the anchor output
-                with torch.no_grad():
-                     output_fix=model_fix(input_batch)
-                
-                loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
-                                      output_fix=output_fix.view(batch_size,-1,in_size,in_size))
-                loss_total=loss_op*lampda+loss_f
-                losses['loss_OP'][-1] += loss_op.item()*lampda
-            else:
-                loss_total=loss_f
-                losses['loss_OP'][-1] += 0.0
-
-            losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
-            losses['loss_boundary'][-1]+=boundary_weight*loss_boundary.item()  #values for plot
-            loss_total.backward()
-            optimizer.step()
-            train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
-            train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
-            train_f = train_f * step / (step + 1) + loss_f.item() / (step + 1)
-            tepoch.set_postfix({'Batch': step + 1, 'Train loss (in progress)': train_mse,'Operator loss': train_op,'PDE and Boundary loss': train_f})
-
-        losses['loss_OP'][-1]/=len(train_loader)
-        losses['loss_PDE'][-1]/=len(train_loader)
-        losses['loss_boundary'][-1]/=len(train_loader)     
         
-        # save the losses
-        writer.add_scalar("train_loss/train_loss", train_mse, epoch)
-        # save the individual losses
-        writer.add_scalar("train_loss/train_loss_pde", losses['loss_PDE'][-1], epoch)
-        writer.add_scalar("train_loss/train_loss_boundary", losses['loss_boundary'][-1], epoch)
-        writer.add_scalar("train_loss/train_loss_op", losses['loss_OP'][-1], epoch)
-
+        #! DEBUG - start with validation
+        """------------------------------------Validation--------------------------------------"""
         # after each epoch, we evaluate the model on the validation and train set       
         # we only calculate relative error for these
         with torch.no_grad():
@@ -303,6 +263,64 @@ for epoch in range(epochs):
                 counter = 0
             else:
                 counter +=1
+                
+            # write debug file #! DEBUG
+            epoch_num = epoch
+            with open(folder + '/debug.txt', 'a') as file:
+                file.write(f"Epoch: {epoch_num}\n")
+                file.write(f"Train loss: {train_relative_l2}\n")
+                file.write(f"Validation loss: {test_relative_l2}\n")
+                file.write(f"Best model testing error: {best_model_testing_error}\n")
+                
+        """------------------------------------------------------------------------------------------------"""
+
+        
+        # loop through the training loader
+        for step, (input_batch, output_batch) in enumerate(train_loader):
+            optimizer.zero_grad()
+            input_batch = input_batch.to(device)
+            output_batch = output_batch.to(device)
+            output_pred_batch = model(input_batch)
+            
+            # get the loss (convert to shapes (B, 2, H, W) and (B, 1, H, W))
+            loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
+                                             output=output_pred_batch.view(batch_size,-1,in_size,in_size))
+            loss_f=loss_PDE+boundary_weight*loss_boundary
+            
+            if InfoPretrainedNetwork["Path to pretrained model"] is not None:
+                # get the anchor output
+                with torch.no_grad():
+                     output_fix=model_fix(input_batch)
+                
+                loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
+                                      output_fix=output_fix.view(batch_size,-1,in_size,in_size))
+                loss_total=loss_op*lampda+loss_f
+                losses['loss_OP'][-1] += loss_op.item()*lampda
+            else:
+                loss_total=loss_f
+                losses['loss_OP'][-1] += 0.0
+
+            losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
+            losses['loss_boundary'][-1]+=boundary_weight*loss_boundary.item()  #values for plot
+            loss_total.backward()
+            optimizer.step()
+            train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
+            train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
+            train_f = train_f * step / (step + 1) + loss_f.item() / (step + 1)
+            tepoch.set_postfix({'Batch': step + 1, 'Train loss (in progress)': train_mse,'Operator loss': train_op,'PDE and Boundary loss': train_f})
+
+        losses['loss_OP'][-1]/=len(train_loader)
+        losses['loss_PDE'][-1]/=len(train_loader)
+        losses['loss_boundary'][-1]/=len(train_loader)     
+        
+        # save the losses
+        writer.add_scalar("train_loss/train_loss", train_mse, epoch)
+        # save the individual losses
+        writer.add_scalar("train_loss/train_loss_pde", losses['loss_PDE'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_boundary", losses['loss_boundary'][-1], epoch)
+        writer.add_scalar("train_loss/train_loss_op", losses['loss_OP'][-1], epoch)
+
+        
 
         tepoch.set_postfix({'Train loss': train_mse, "Relative Train": train_relative_l2, "Relative Val loss": test_relative_l2})
         tepoch.close()
