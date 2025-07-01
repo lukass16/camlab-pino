@@ -26,15 +26,15 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": None, #"TrainedModels/helmholtz/CNO_1024helmholtz", 
+        "Path to pretrained model": "TrainedModels/helmholtz/CNO_1024helmholtz", 
         "Pretrained Samples":  1024,
     }
     training_properties = {
-        "learning_rate": 0.0003, 
+        "learning_rate": 3e-5, 
         "weight_decay": 1e-10,
         "scheduler_step": 10,
         "scheduler_gamma": 0.98,
-        "epochs": 5,
+        "epochs": 100,
         "batch_size": 16,
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
         "training_samples": 1024,  # How many training samples?
@@ -76,7 +76,7 @@ if len(sys.argv) == 2:
     
     which_example = sys.argv[1]
     
-    CUSTOM_FLAG = "_start_debug" #! changed for the test
+    CUSTOM_FLAG = "lr_3e-5" #! changed for the test
 
     # Save the models here:
     # if pretrained

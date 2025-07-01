@@ -20,29 +20,31 @@ from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
 '''
 Currently the code trains an FNO with optional pretraining
 '''
+MODEL_DIR = "helmholtz_debug"
 if len(sys.argv) == 2:
 
     InfoPretrainedNetwork= {
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/helmholtz/FNO_1024helmholtz",
+        "Path to pretrained model": f"TrainedModels/{MODEL_DIR}/FNO_1024helmholtz",
         "Pretrained Samples":  1024,
     }
 
     training_properties = {
-       "learning_rate": 0.0003, 
+       "learning_rate": 3e-5, 
         "weight_decay": 1e-10,
-        "scheduler_step": 10,
+        "scheduler_step": 10, # number of steps after which the learning rate is decayed
         "scheduler_gamma": 0.98,
-        "epochs": 10,   #! changed for the test
+        "epochs": 30,   #! changed for the test
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "lambda": 100,
         "boundary_weight":1,
         "pad_factor": 0,
-        "patience": 1.0 #patience for early stopping  - usually 0.4 #! changed for the test
+        "patience": 1.0, #patience for early stopping  - usually 0.4 #! changed for the test
+        "gradient_clip_value": 5 # set None for no gradient clipping
     }
 
     # FNO architecture (only used when training from scratch)
@@ -64,7 +66,7 @@ if len(sys.argv) == 2:
     
     which_example = sys.argv[1]
     
-    CUSTOM_FLAG = "_start_debug" #! changed for the test
+    CUSTOM_FLAG = "_start_debug_grad_norm_10_lambda_100_boundary_weight_1" #! changed for the test
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
@@ -99,6 +101,7 @@ p = training_properties["exp"]
 lampda=training_properties['lambda']
 boundary_weight=training_properties['boundary_weight']
 pad_factor=training_properties['pad_factor']
+gradient_clip_value = training_properties.get("gradient_clip_value")
 
 
 if not os.path.isdir(folder):
@@ -183,6 +186,19 @@ Normalization_values=train_loader.dataset.get_max_and_min() # need these for PI-
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
+
+#! DEBUG - test different lr schedulers
+# steps_per_epoch = len(train_loader)
+# scheduler = torch.optim.lr_scheduler.OneCycleLR(
+#     optimizer,
+#     max_lr=learning_rate,           # peak LR you want to hit
+#     epochs=epochs,
+#     steps_per_epoch=steps_per_epoch,
+#     pct_start=0.1,         # fraction of cycle spent increasing LR
+#     anneal_strategy='cos', # cosine decay after the peak
+#     final_div_factor=1e4,  # LR at the end = max_lr / final_div_factor
+# )
+
 
 if str(device) == 'cpu':
     print("------------------------------------------")
@@ -303,7 +319,24 @@ for epoch in range(epochs):
             losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
             losses['loss_boundary'][-1]+=boundary_weight*loss_boundary.item()  #values for plot
             loss_total.backward()
+            
+            # optional gradient clipping
+            if gradient_clip_value is not None:
+                total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_value)
+            else:
+                total_norm = 0.0
+            
+            #! DEBUG - log the gradient norm and the learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+            log_mode = 'a'
+            # On the first step of the first epoch, overwrite the log file.
+            if epoch == 0 and step == 0:
+                log_mode = 'w'
+            with open(os.path.join(folder, 'optim_debug.txt'), log_mode) as f:
+                f.write(f"Epoch {epoch}, Step {step}: Total Gradient Norm = {total_norm}, Learning Rate = {current_lr}\n")
+            
             optimizer.step()
+            scheduler.step() # Step the scheduler after each batch for OneCycleLR
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
             train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
             train_f = train_f * step / (step + 1) + loss_f.item() / (step + 1)
@@ -330,7 +363,7 @@ for epoch in range(epochs):
             file.write("Best Testing Error: " + str(best_model_testing_error) + "\n")
             file.write("Current Epoch: " + str(epoch) + "\n")
             file.write("Params: " + str(n_params) + "\n")
-        scheduler.step()
+            
     
     # early stopping
     if counter>patience:
