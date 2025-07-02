@@ -12,7 +12,159 @@ import matplotlib.pyplot as plt
 
 from Problems.CNOBenchmarks import Airfoil, DiscContTranslation, ContTranslation, AllenCahn, SinFrequency, WaveEquation, ShearLayer, Darcy, Helmholtz
 from Physics_NO.loss_functions.Relative_loss import Relative_loss
-from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
+from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP, Laplace, Unnormalize
+from FiniteDifferences import Laplace as FDLaplace
+
+def create_helmholtz_evolution_plot_cno(input_batch, output_batch, output_pred_batch, in_size, 
+                                        step_number, folder, Normalization_values, device):
+    """
+    Create evolution plots for Helmholtz equation showing true/predicted labels, laplacians, and targets.
+    Uses finite difference laplacian computation. CNO version with (B, C, H, W) format.
+    
+    Args:
+        input_batch: Input batch (B, 2, H, W) where channels are (a, boundary) for Helmholtz
+        output_batch: True labels (B, 1, H, W)  
+        output_pred_batch: Predicted labels (B, 1, H, W)
+        in_size: Grid size
+        step_number: Current optimization step
+        folder: Directory to save plots
+        Normalization_values: For unnormalization
+        device: torch device
+    """
+    
+    # Create evolution_plots directory if it doesn't exist
+    plots_dir = os.path.join(folder, "evolution_plots")
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
+    
+    # Take the first sample from the batch
+    input_sample = input_batch[0:1]
+    label_sample = output_batch[0:1] 
+    pred_sample = output_pred_batch[0:1]
+    
+    # Unnormalize the data
+    unnormalize_fn = Unnormalize("helmholtz", Normalization_values)
+    input_unnorm, label_unnorm = unnormalize_fn(input=input_sample, output=label_sample)
+    _, pred_unnorm = unnormalize_fn(input=input_sample, output=pred_sample)
+    
+    # Convert to (B, H, W) format for laplacian computation
+    label_unnorm_2d = label_unnorm.squeeze(1)  # (1, H, W)
+    pred_unnorm_2d = pred_unnorm.squeeze(1)    # (1, H, W)
+    
+    # Compute laplacians using finite differences
+    laplace_fn = FDLaplace(s=in_size, D=1.0)
+    lap_label, cut_size = laplace_fn(label_unnorm_2d)
+    lap_pred, _ = laplace_fn(pred_unnorm_2d)
+    
+    # For Helmholtz: target = -ω²a²u
+    omega = 5 * torch.pi / 2  # Default omega value from loss function
+    a = input_unnorm[0, 0, :, :]  # Coefficient field (CNO format: B, C, H, W)
+    
+    # Crop a to match laplacian size
+    a_cropped = a[cut_size:-cut_size, cut_size:-cut_size]
+    
+    # Compute targets
+    target_label = -omega**2 * a_cropped**2 * label_unnorm_2d[0, cut_size:-cut_size, cut_size:-cut_size]
+    target_pred = -omega**2 * a_cropped**2 * pred_unnorm_2d[0, cut_size:-cut_size, cut_size:-cut_size]
+    
+    # Convert to numpy for plotting
+    def to_numpy(x):
+        return x.detach().cpu().numpy()
+    
+    # Get the data for plotting (crop to match laplacian size)
+    label_plot = to_numpy(label_unnorm[0, 0, cut_size:-cut_size, cut_size:-cut_size])
+    pred_plot = to_numpy(pred_unnorm[0, 0, cut_size:-cut_size, cut_size:-cut_size])
+    lap_label_plot = to_numpy(lap_label[0])
+    lap_pred_plot = to_numpy(lap_pred[0])
+    target_label_plot = to_numpy(target_label)
+    target_pred_plot = to_numpy(target_pred)
+    
+    # Create the plot with space for horizontal colorbars
+    fig = plt.figure(figsize=(15, 12))
+    fig.suptitle(f"Predictions before step {step_number}", fontsize=16)
+    
+    # Create a grid: 3 rows (2 for plots, 1 for colorbars) x 3 columns
+    gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 0.1], hspace=0.3, wspace=0.3)
+    
+    # Create subplot axes for the plots (2x3 grid)
+    axes = []
+    for i in range(2):
+        row = []
+        for j in range(3):
+            ax = fig.add_subplot(gs[i, j])
+            row.append(ax)
+        axes.append(row)
+    
+    # Calculate shared color scales as requested
+    # For u and u* (column 0)
+    vmin_u = min(label_plot.min(), pred_plot.min())
+    vmax_u = max(label_plot.max(), pred_plot.max())
+    
+    # For laplacians (column 1)
+    vmin_lap = min(lap_label_plot.min(), lap_pred_plot.min())
+    vmax_lap = max(lap_label_plot.max(), lap_pred_plot.max())
+    
+    # For targets (column 2)
+    vmin_target = min(target_label_plot.min(), target_pred_plot.min())
+    vmax_target = max(target_label_plot.max(), target_pred_plot.max())
+    
+    # Row 0: True values
+    im00 = axes[0][0].imshow(label_plot, cmap='gist_ncar', vmin=vmin_u, vmax=vmax_u)
+    axes[0][0].set_title('True label u')
+    
+    im01 = axes[0][1].imshow(lap_label_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[0][1].set_title('Laplacian of true label ∇²u')
+    
+    im02 = axes[0][2].imshow(target_label_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[0][2].set_title('Target using label -ω²a²u')
+    
+    # Row 1: Predicted values  
+    im10 = axes[1][0].imshow(pred_plot, cmap='gist_ncar', vmin=vmin_u, vmax=vmax_u)
+    axes[1][0].set_title('Predicted label u*')
+    
+    im11 = axes[1][1].imshow(lap_pred_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[1][1].set_title('Laplacian of prediction ∇²u*')
+    
+    im12 = axes[1][2].imshow(target_pred_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[1][2].set_title('Target using prediction -ω²a²u*')
+    
+    # Add horizontal colorbars below each column
+    # Column 0 colorbar (u and u*)
+    cax0 = fig.add_subplot(gs[2, 0])
+    fig.colorbar(im00, cax=cax0, orientation='horizontal')
+    
+    # Column 1 colorbar (laplacians)
+    cax1 = fig.add_subplot(gs[2, 1])
+    fig.colorbar(im01, cax=cax1, orientation='horizontal')
+    
+    # Column 2 colorbar (targets)
+    cax2 = fig.add_subplot(gs[2, 2])
+    fig.colorbar(im02, cax=cax2, orientation='horizontal')
+    
+    # Save the plot
+    plot_filename = f"evolution_step_{step_number:06d}.png"
+    plot_path = os.path.join(plots_dir, plot_filename)
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    # Also plot the coefficient field a and a² for debugging
+    fig_a, axes_a = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # Plot a
+    im_a = axes_a[0].imshow(a_cropped.cpu().numpy(), cmap='gist_ncar')
+    axes_a[0].set_title('Input coefficient a')
+    fig_a.colorbar(im_a, ax=axes_a[0])
+    
+    # Plot a²
+    im_a2 = axes_a[1].imshow(a_cropped.cpu().numpy()**2, cmap='gist_ncar')
+    axes_a[1].set_title('Input coefficient a²')
+    fig_a.colorbar(im_a2, ax=axes_a[1])
+    
+    # Save the a plot
+    a_plot_filename = f"a_values_step_{step_number:06d}.png"
+    a_plot_path = os.path.join(plots_dir, a_plot_filename)
+    plt.savefig(a_plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig_a)
 
 
 
@@ -26,11 +178,11 @@ if len(sys.argv) == 2:
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": "TrainedModels/helmholtz/CNO_1024helmholtz", 
+        "Path to pretrained model": None, 
         "Pretrained Samples":  1024,
     }
     training_properties = {
-        "learning_rate": 3e-5, 
+        "learning_rate": 3e-4, 
         "weight_decay": 1e-10,
         "scheduler_step": 10,
         "scheduler_gamma": 0.98,
@@ -39,9 +191,9 @@ if len(sys.argv) == 2:
         "exp": 1,                # Do we use L1 or L2 errors? Default: L1
         "training_samples": 1024,  # How many training samples?
         "lambda": 100,
-        "boundary_weight":1, #! changed from 10 for the test
+        "boundary_weight":10, 
         "pad_factor": 0, #0 if you dont want to pad the input
-        "patience": 1.0 #patience for early stopping - usually 0.4 #! changed for the test
+        "patience": 0.4 #patience for early stopping - usually 0.4 
     }
  #---------- Add model Parameters for training form scratch----------------------
  #model_architecture_ is only relevant if Path to pretrained model==None!!
@@ -76,14 +228,15 @@ if len(sys.argv) == 2:
     
     which_example = sys.argv[1]
     
-    CUSTOM_FLAG = "lr_3e-5" #! changed for the test
+    MODEL_DIR = "helmholtz"
+    CUSTOM_FLAG = "_new" #! changed for the test
 
     # Save the models here:
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+which_example+"/PINO+_CNO_pretrained"+which_example+CUSTOM_FLAG
+        folder = f"TrainedModels/{MODEL_DIR}/PINO+_CNO_pretrained{which_example}{CUSTOM_FLAG}"
     else:
-        folder = "TrainedModels/"+which_example+"/PINO+_CNO_no_pretraining"+which_example+CUSTOM_FLAG
+        folder = f"TrainedModels/{MODEL_DIR}/PINO+_CNO_no_pretraining{which_example}{CUSTOM_FLAG}"
         
 else:
     
@@ -227,6 +380,7 @@ losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': []
 patience = int(training_properties["patience"] * epochs)
 best_model_testing_error = 300
 counter = 0
+total_steps = 0  # Track total optimization steps across all epochs
 
 for epoch in range(epochs):
     
@@ -303,9 +457,10 @@ for epoch in range(epochs):
 
         
         # loop through the training loader
-        for step, (input_batch, _) in enumerate(train_loader):
+        for step, (input_batch, output_batch) in enumerate(train_loader):
             optimizer.zero_grad()
             input_batch = input_batch.to(device)
+            output_batch = output_batch.to(device)
             
             output_pred_batch = model(input_batch)
             
@@ -330,7 +485,14 @@ for epoch in range(epochs):
             losses['loss_PDE'][-1]     +=loss_PDE.item()       #values for plot
             losses['loss_boundary'][-1]+=boundary_weight*loss_boundary.item()  #values for plot
             loss_total.backward()
+            
+            #! DEBUG start - make the evolution plot (only for Helmholtz)
+            if which_example == "helmholtz" and epoch == 0:
+                create_helmholtz_evolution_plot_cno(input_batch, output_batch, output_pred_batch, in_size, total_steps, folder, Normalization_values, device)
+            #! DEBUG end - make the evolution plot
+            
             optimizer.step()
+            total_steps += 1  # Increment total steps counter
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
             train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
             train_f = train_f * step / (step + 1) + loss_PDE.item() / (step + 1)

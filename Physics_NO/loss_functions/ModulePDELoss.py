@@ -25,12 +25,6 @@ class Loss_PDE(nn.Module):
        if which_example=='poisson':
           self.D=1 # ! changed to 1 since we are using a [0,1] domain
           self.loss=Poisson_loss_FD(p=self.p,D=self.D,in_size=self.in_size,pad_factor=self.pad_factor)
-          
-          # deal with force_fourier and force_fd #! this is for debugging purposes
-          if self.force_fourier:
-             self.loss=Helmholtz_loss(p=self.p,D=self.D,in_size=self.in_size,pad_factor=self.pad_factor)
-          elif self.force_fd:
-             self.loss=Helmholtz_loss_FD(p=self.p,D=self.D,in_size=self.in_size,pad_factor=self.pad_factor)
              
        elif which_example=='helmholtz':
           self.D=1
@@ -170,6 +164,66 @@ class Laplace(nn.Module):
          Laplace_u=torch.fft.irfft2(Laplace_u_hat[...,:k_max + 1], dim=[-2, -1])
     
          return Laplace_u
+     
+class Helmholtz_hybrid_loss_FD(nn.Module):
+    def __init__(self,omega=5*torch.pi/2,p=1,D=1,pad_factor=0,in_size=128):
+           super(Helmholtz_hybrid_loss_FD,self).__init__()
+           self.omega=omega
+           self.p=p
+           self.pad_factor=pad_factor
+           self.in_size=in_size
+           self.original_input_size=self.in_size-self.pad_factor
+           self.D=D+self.pad_factor/(self.in_size-self.pad_factor)*D #D for extended domain
+           self.Laplace=FDLaplace(s=self.in_size,D=self.D) #! changed to FDLaplace - testing Finite Diff Laplacian
+
+           if p == 1:
+               self.loss = torch.nn.L1Loss()
+           elif p == 2:
+               self.loss = torch.nn.MSELoss()
+           elif p ==3:
+               self.loss = torch.nn.SmoothL1Loss()
+           else:
+               raise ValueError("p must be 1, 2 or 3 for smooth L1")
+
+    def forward(self,input,output,label): # note: these input and output are already unnormalized
+        assert output.dim() == 4 and output.shape[1] == 1, f"output must be of shape (B, 1, H, W) but got {output.shape}" #! debug
+        
+        #Add boundary loss
+        a=input[:,0,:,:]
+        output = output.squeeze(1)
+        label = label.squeeze(1)
+            
+        boundary=input[:,1,0,0].unsqueeze(-1).unsqueeze(-1) # (B, 1, 1) - all the boundaries for the batch
+        
+        boundary_line = boundary.expand(-1, -1, self.original_input_size).squeeze(1) # shape (B, grid_size) - constant boundary line for each batch
+
+        # match the boundary to the boundary conditions
+        boundary_lossx_0=self.loss(output[:,0,:],  boundary_line)
+        boundary_lossy_0=self.loss(output[:,:,0],  boundary_line)
+    
+        boundary_lossx_D=self.loss(output[:,-1,:], boundary_line)
+        boundary_lossy_D=self.loss(output[:,:,-1], boundary_line)
+        boundary_loss=0.25*(boundary_lossx_0+boundary_lossy_0+boundary_lossx_D+boundary_lossy_D)
+    
+        # calculate the laplace of the output and label
+        Laplace_u_output, cut_size =self.Laplace(output)	
+        Laplace_u_label, cut_size =self.Laplace(label)
+
+        # calculate the pde loss (Laplace_u = -omega^2 * a^2 * output)
+        loss_pde_1=self.loss(Laplace_u_output,\
+                        -self.omega**2*a[...,cut_size:-cut_size,cut_size:-cut_size]**2*label[...,cut_size:-cut_size,cut_size:-cut_size])
+        
+        # loss_pde_2=self.loss(Laplace_u_output,\
+        #                 -self.omega**2*a[...,cut_size:-cut_size,cut_size:-cut_size]**2*label[...,cut_size:-cut_size,cut_size:-cut_size])
+        
+        loss_pde=loss_pde_1#+loss_pde_2
+        
+        #! DEBUG
+        #print(f"loss_pde_1: {loss_pde_1.item()}, loss_pde_2: {loss_pde_2.item()}")
+        
+    
+        return loss_pde, boundary_loss
+
     
 class Helmholtz_loss_FD(nn.Module):
     def __init__(self,omega=5*torch.pi/2,p=1,D=1,pad_factor=0,in_size=128):

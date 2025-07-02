@@ -12,38 +12,190 @@ import matplotlib.pyplot as plt
 
 from Problems.FNOBenchmarks import SinFrequency, Helmholtz
 from Physics_NO.loss_functions.Relative_loss import Relative_loss
-from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP
+from Physics_NO.loss_functions.ModulePDELoss import Loss_PDE,Loss_OP, Laplace, Unnormalize
+from FiniteDifferences import Laplace as FDLaplace
 
-
+def create_helmholtz_evolution_plot(input_batch, output_batch, output_pred_batch, in_size, 
+                                   step_number, folder, Normalization_values, device):
+    """
+    Create evolution plots for Helmholtz equation showing true/predicted labels, laplacians, and targets.
+    Uses finite difference laplacian computation.
+    
+    Args:
+        input_batch: Input batch (B, 2, H, W) where channels are (a, boundary) for Helmholtz
+        output_batch: True labels (B, 1, H, W)  
+        output_pred_batch: Predicted labels (B, 1, H, W)
+        in_size: Grid size
+        step_number: Current optimization step
+        folder: Directory to save plots
+        Normalization_values: For unnormalization
+        device: torch device
+    """
+    
+    # Create evolution_plots directory if it doesn't exist
+    plots_dir = os.path.join(folder, "evolution_plots")
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
+    
+    # Take the first sample from the batch
+    input_sample = input_batch[0:1]
+    label_sample = output_batch[0:1] 
+    pred_sample = output_pred_batch[0:1]
+    
+    # Unnormalize the data
+    unnormalize_fn = Unnormalize("helmholtz", Normalization_values)
+    input_unnorm, label_unnorm = unnormalize_fn(input=input_sample, output=label_sample)
+    _, pred_unnorm = unnormalize_fn(input=input_sample, output=pred_sample)
+    
+    # Convert to (B, H, W) format for laplacian computation
+    label_unnorm_2d = label_unnorm.squeeze(1)  # (1, H, W)
+    pred_unnorm_2d = pred_unnorm.squeeze(1)    # (1, H, W)
+    
+    # Compute laplacians using finite differences
+    laplace_fn = FDLaplace(s=in_size, D=1.0)
+    lap_label, cut_size = laplace_fn(label_unnorm_2d)
+    lap_pred, _ = laplace_fn(pred_unnorm_2d)
+    
+    # For Helmholtz: target = -ω²a²u
+    omega = 5 * torch.pi / 2  # Default omega value from loss function
+    a = input_unnorm[0, 0, :, :]  # Coefficient field
+    
+    # Crop a to match laplacian size
+    a_cropped = a[cut_size:-cut_size, cut_size:-cut_size]
+    
+    # Compute targets
+    target_label = -omega**2 * a_cropped**2 * label_unnorm_2d[0, cut_size:-cut_size, cut_size:-cut_size]
+    target_pred = -omega**2 * a_cropped**2 * pred_unnorm_2d[0, cut_size:-cut_size, cut_size:-cut_size]
+    
+    # Convert to numpy for plotting
+    def to_numpy(x):
+        return x.detach().cpu().numpy()
+    
+    # Get the data for plotting (crop to match laplacian size)
+    label_plot = to_numpy(label_unnorm[0, 0, cut_size:-cut_size, cut_size:-cut_size])
+    pred_plot = to_numpy(pred_unnorm[0, 0, cut_size:-cut_size, cut_size:-cut_size])
+    lap_label_plot = to_numpy(lap_label[0])
+    lap_pred_plot = to_numpy(lap_pred[0])
+    target_label_plot = to_numpy(target_label)
+    target_pred_plot = to_numpy(target_pred)
+    
+    # Create the plot with space for horizontal colorbars
+    fig = plt.figure(figsize=(15, 12))
+    fig.suptitle(f"Predictions before step {step_number}", fontsize=16)
+    
+    # Create a grid: 3 rows (2 for plots, 1 for colorbars) x 3 columns
+    gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 0.1], hspace=0.3, wspace=0.3)
+    
+    # Create subplot axes for the plots (2x3 grid)
+    axes = []
+    for i in range(2):
+        row = []
+        for j in range(3):
+            ax = fig.add_subplot(gs[i, j])
+            row.append(ax)
+        axes.append(row)
+    
+    # Calculate shared color scales as requested
+    # For u and u* (column 0)
+    vmin_u = min(label_plot.min(), pred_plot.min())
+    vmax_u = max(label_plot.max(), pred_plot.max())
+    
+    # For laplacians (column 1)
+    vmin_lap = min(lap_label_plot.min(), lap_pred_plot.min())
+    vmax_lap = max(lap_label_plot.max(), lap_pred_plot.max())
+    
+    # For targets (column 2)
+    vmin_target = min(target_label_plot.min(), target_pred_plot.min())
+    vmax_target = max(target_label_plot.max(), target_pred_plot.max())
+    
+    # Row 0: True values
+    im00 = axes[0][0].imshow(label_plot, cmap='gist_ncar', vmin=vmin_u, vmax=vmax_u)
+    axes[0][0].set_title('True label u')
+    
+    im01 = axes[0][1].imshow(lap_label_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[0][1].set_title('Laplacian of true label ∇²u')
+    
+    im02 = axes[0][2].imshow(target_label_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[0][2].set_title('Target using label -ω²a²u')
+    
+    # Row 1: Predicted values  
+    im10 = axes[1][0].imshow(pred_plot, cmap='gist_ncar', vmin=vmin_u, vmax=vmax_u)
+    axes[1][0].set_title('Predicted label u*')
+    
+    im11 = axes[1][1].imshow(lap_pred_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[1][1].set_title('Laplacian of prediction ∇²u*')
+    
+    im12 = axes[1][2].imshow(target_pred_plot, cmap='gist_ncar', vmin=vmin_lap, vmax=vmax_lap)
+    axes[1][2].set_title('Target using prediction -ω²a²u*')
+    
+    # Add horizontal colorbars below each column
+    # Column 0 colorbar (u and u*)
+    cax0 = fig.add_subplot(gs[2, 0])
+    fig.colorbar(im00, cax=cax0, orientation='horizontal')
+    
+    # Column 1 colorbar (laplacians)
+    cax1 = fig.add_subplot(gs[2, 1])
+    fig.colorbar(im01, cax=cax1, orientation='horizontal')
+    
+    # Column 2 colorbar (targets)
+    cax2 = fig.add_subplot(gs[2, 2])
+    fig.colorbar(im02, cax=cax2, orientation='horizontal')
+    
+    # Save the plot
+    plot_filename = f"evolution_step_{step_number:06d}.png"
+    plot_path = os.path.join(plots_dir, plot_filename)
+    plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    #! DEBUG: plot also a and a^2
+    fig_a, axes_a = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # Plot a
+    im_a = axes_a[0].imshow(a_cropped.cpu().numpy(), cmap='gist_ncar')
+    axes_a[0].set_title('Input coefficient a')
+    fig_a.colorbar(im_a, ax=axes_a[0])
+    
+    # Plot a²
+    im_a2 = axes_a[1].imshow(a_cropped.cpu().numpy()**2, cmap='gist_ncar')
+    axes_a[1].set_title('Input coefficient a²')
+    fig_a.colorbar(im_a2, ax=axes_a[1])
+    
+    # Save the a plot
+    a_plot_filename = f"a_values_step_{step_number:06d}.png"
+    a_plot_path = os.path.join(plots_dir, a_plot_filename)
+    plt.savefig(a_plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig_a)
+    
+    
 
 """-------------------------------Setting parameters for training--------------------------------"""
 '''
 Currently the code trains an FNO with optional pretraining
 '''
-MODEL_DIR = "helmholtz_debug"
+
 if len(sys.argv) == 2:
 
     InfoPretrainedNetwork= {
         #----------------------------------------------------------------------
         #Load Trained model: (Must be compatible with model_architecture)
         #Path to pretrained model: None for training from scratch
-        "Path to pretrained model": f"TrainedModels/{MODEL_DIR}/FNO_1024helmholtz",
+        "Path to pretrained model": "TrainedModels/helmholtz/FNO_1024helmholtz",
         "Pretrained Samples":  1024,
     }
 
     training_properties = {
-       "learning_rate": 3e-5, 
+        "learning_rate": 3e-4, 
         "weight_decay": 1e-10,
         "scheduler_step": 10, # number of steps after which the learning rate is decayed
         "scheduler_gamma": 0.98,
-        "epochs": 30,   #! changed for the test
+        "epochs": 100,
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "lambda": 100,
-        "boundary_weight":1,
+        "boundary_weight":1, # best known values for helmholtz: 1 for pure, 10 for pretrained (?)
         "pad_factor": 0,
-        "patience": 1.0, #patience for early stopping  - usually 0.4 #! changed for the test
+        "patience": 0.4, #patience for early stopping  - usually 0.4 
         "gradient_clip_value": 5 # set None for no gradient clipping
     }
 
@@ -66,13 +218,14 @@ if len(sys.argv) == 2:
     
     which_example = sys.argv[1]
     
-    CUSTOM_FLAG = "_start_debug_grad_norm_10_lambda_100_boundary_weight_1" #! changed for the test
+    MODEL_DIR = "helmholtz"
+    CUSTOM_FLAG = "_new" #! changed for the test
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
-        folder = "TrainedModels/"+which_example+"/PINO+_FNO_pretrained"+which_example+CUSTOM_FLAG
+        folder = f"TrainedModels/{MODEL_DIR}/PINO+_FNO_pretrained{which_example}{CUSTOM_FLAG}"
     else:
-        folder = "TrainedModels/"+which_example+"/PINO+_FNO_no_pretraining"+which_example+CUSTOM_FLAG
+        folder = f"TrainedModels/{MODEL_DIR}/PINO+_FNO_no_pretraining{which_example}{CUSTOM_FLAG}"
         
 else:
     
@@ -187,18 +340,6 @@ Normalization_values=train_loader.dataset.get_max_and_min() # need these for PI-
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
 
-#! DEBUG - test different lr schedulers
-# steps_per_epoch = len(train_loader)
-# scheduler = torch.optim.lr_scheduler.OneCycleLR(
-#     optimizer,
-#     max_lr=learning_rate,           # peak LR you want to hit
-#     epochs=epochs,
-#     steps_per_epoch=steps_per_epoch,
-#     pct_start=0.1,         # fraction of cycle spent increasing LR
-#     anneal_strategy='cos', # cosine decay after the peak
-#     final_div_factor=1e4,  # LR at the end = max_lr / final_div_factor
-# )
-
 
 if str(device) == 'cpu':
     print("------------------------------------------")
@@ -218,6 +359,7 @@ losses = {'loss_PDE': [],'loss_boundary': [], 'loss_OP': [], 'loss_training': []
 patience = int(training_properties["patience"] * epochs)
 best_model_testing_error = 300
 counter = 0
+total_steps = 0  # Track total optimization steps across all epochs
 
 for epoch in range(epochs):
     
@@ -247,7 +389,12 @@ for epoch in range(epochs):
                 output_batch = output_batch.to(device)
                 output_pred_batch = model(input_batch)
                 
-                loss_f=loss_relative(output_pred_batch.view(batch_size,-1,in_size,in_size),output_batch.view(batch_size,-1,in_size,in_size))
+                # reshape
+                input_batch_ = input_batch.permute(0,3,1,2)
+                output_batch_ = output_batch.permute(0,3,1,2)
+                output_pred_batch_ = output_pred_batch.permute(0,3,1,2)
+                
+                loss_f=loss_relative(output_pred_batch_,output_batch_)
 
                 test_relative_l2 += loss_f.item()
             test_relative_l2 /= len(val_loader)
@@ -259,11 +406,16 @@ for epoch in range(epochs):
                     output_batch = output_batch.to(device)
                     output_pred_batch = model(input_batch)
                     
+                    # reshape
+                    input_batch_ = input_batch.permute(0,3,1,2)
+                    output_batch_ = output_batch.permute(0,3,1,2)
+                    output_pred_batch_ = output_pred_batch.permute(0,3,1,2)
+                    
                     if which_example == "airfoil":
                         output_pred_batch[input_batch==1] = 1
                         output_batch[input_batch==1] = 1
                     
-                    loss_f = loss_relative(output_pred_batch.view(batch_size,-1,in_size,in_size),output_batch.view(batch_size,-1,in_size,in_size))
+                    loss_f = loss_relative(output_pred_batch_,output_batch_)
                     train_relative_l2 += loss_f.item()
             train_relative_l2 /= len(train_loader) # take the average of the losses
             losses['loss_training'].append(train_relative_l2)
@@ -299,17 +451,25 @@ for epoch in range(epochs):
             output_pred_batch = model(input_batch)
             
             # get the loss (convert to shapes (B, 2, H, W) and (B, 1, H, W))
-            loss_PDE,loss_boundary= loss_pde(input=input_batch.view(batch_size,-1,in_size,in_size),\
-                                             output=output_pred_batch.view(batch_size,-1,in_size,in_size))
+            input_batch_ = input_batch.permute(0,3,1,2)  
+            output_batch_ = output_batch.permute(0,3,1,2)
+            output_pred_batch_ = output_pred_batch.permute(0,3,1,2)
+            #! DEBUG
+            assert input_batch_.shape == (batch_size, 2, in_size, in_size)
+            assert output_batch_.shape == (batch_size, 1, in_size, in_size)
+            assert output_pred_batch_.shape == (batch_size, 1, in_size, in_size)
+
+            loss_PDE,loss_boundary= loss_pde(input=input_batch_, output=output_pred_batch_) #! test new loss function label=output_batch_
             loss_f=loss_PDE+boundary_weight*loss_boundary
             
             if InfoPretrainedNetwork["Path to pretrained model"] is not None:
                 # get the anchor output
                 with torch.no_grad():
                      output_fix=model_fix(input_batch)
+                     output_fix_ = output_fix.permute(0,3,1,2) # reshape
                 
-                loss_op=Operator_loss(output_train=output_pred_batch.view(batch_size,-1,in_size,in_size),\
-                                      output_fix=output_fix.view(batch_size,-1,in_size,in_size))
+                loss_op=Operator_loss(output_train=output_pred_batch_,output_fix=output_fix_)
+                
                 loss_total=loss_op*lampda+loss_f
                 losses['loss_OP'][-1] += loss_op.item()*lampda
             else:
@@ -334,8 +494,14 @@ for epoch in range(epochs):
                 log_mode = 'w'
             with open(os.path.join(folder, 'optim_debug.txt'), log_mode) as f:
                 f.write(f"Epoch {epoch}, Step {step}: Total Gradient Norm = {total_norm}, Learning Rate = {current_lr}\n")
+                
+            #! DEBUG start - make the evolution plot (only for Helmholtz)
+            if which_example == "helmholtz" and epoch == 0:
+                create_helmholtz_evolution_plot(input_batch_, output_batch_, output_pred_batch_, in_size, total_steps, folder, Normalization_values, device)
+            #! DEBUG end - make the evolution plot
             
             optimizer.step()
+            total_steps += 1  # Increment total steps counter
             scheduler.step() # Step the scheduler after each batch for OneCycleLR
             train_mse = train_mse * step / (step + 1) + loss_total.item() / (step + 1)
             train_op = train_op * step / (step + 1) + losses['loss_OP'][-1]/ (step + 1)
