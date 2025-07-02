@@ -147,24 +147,6 @@ def create_helmholtz_evolution_plot_cno(input_batch, output_batch, output_pred_b
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     
-    # Also plot the coefficient field a and a² for debugging
-    fig_a, axes_a = plt.subplots(1, 2, figsize=(12, 5))
-    
-    # Plot a
-    im_a = axes_a[0].imshow(a_cropped.cpu().numpy(), cmap='gist_ncar')
-    axes_a[0].set_title('Input coefficient a')
-    fig_a.colorbar(im_a, ax=axes_a[0])
-    
-    # Plot a²
-    im_a2 = axes_a[1].imshow(a_cropped.cpu().numpy()**2, cmap='gist_ncar')
-    axes_a[1].set_title('Input coefficient a²')
-    fig_a.colorbar(im_a2, ax=axes_a[1])
-    
-    # Save the a plot
-    a_plot_filename = f"a_values_step_{step_number:06d}.png"
-    a_plot_path = os.path.join(plots_dir, a_plot_filename)
-    plt.savefig(a_plot_path, dpi=150, bbox_inches='tight')
-    plt.close(fig_a)
 
 
 

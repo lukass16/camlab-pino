@@ -147,26 +147,150 @@ def create_helmholtz_evolution_plot(input_batch, output_batch, output_pred_batch
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     
-    #! DEBUG: plot also a and a^2
-    fig_a, axes_a = plt.subplots(1, 2, figsize=(12, 5))
+    # ====================== NEW: Create separate laplacian comparison plot ======================
     
-    # Plot a
-    im_a = axes_a[0].imshow(a_cropped.cpu().numpy(), cmap='gist_ncar')
-    axes_a[0].set_title('Input coefficient a')
-    fig_a.colorbar(im_a, ax=axes_a[0])
+    # Create different Laplacian operators
+    laplace_9pt = FDLaplace(s=in_size, D=1.0, type="9-point")  # Standard (default)
+    laplace_13pt = FDLaplace(s=in_size, D=1.0, type="13-point")  # 13-point stencil
+    laplace_fourier = Laplace(s=in_size, D=1.0)  # Fourier method
     
-    # Plot a²
-    im_a2 = axes_a[1].imshow(a_cropped.cpu().numpy()**2, cmap='gist_ncar')
-    axes_a[1].set_title('Input coefficient a²')
-    fig_a.colorbar(im_a2, ax=axes_a[1])
+    # Apply different Laplacians to true label and prediction
+    lap_label_9pt, cut_9pt = laplace_9pt(label_unnorm_2d)
+    lap_pred_9pt, _ = laplace_9pt(pred_unnorm_2d)
     
-    # Save the a plot
-    a_plot_filename = f"a_values_step_{step_number:06d}.png"
-    a_plot_path = os.path.join(plots_dir, a_plot_filename)
-    plt.savefig(a_plot_path, dpi=150, bbox_inches='tight')
-    plt.close(fig_a)
+    lap_label_13pt, cut_13pt = laplace_13pt(label_unnorm_2d) 
+    lap_pred_13pt, _ = laplace_13pt(pred_unnorm_2d)
     
+    lap_label_fourier = laplace_fourier(label_unnorm_2d)
+    lap_pred_fourier = laplace_fourier(pred_unnorm_2d)
     
+    # Crop all results to cut_size=2 (to match 13-point stencil dimensions)
+    crop_size = 2
+    
+    # Crop true label and prediction to match
+    label_cropped = label_unnorm_2d[0, crop_size:-crop_size, crop_size:-crop_size]
+    pred_cropped = pred_unnorm_2d[0, crop_size:-crop_size, crop_size:-crop_size]
+    
+    # Crop laplacians to match 13-point size
+    lap_label_9pt_cropped = lap_label_9pt[0, (crop_size-cut_9pt):-(crop_size-cut_9pt), (crop_size-cut_9pt):-(crop_size-cut_9pt)]
+    lap_pred_9pt_cropped = lap_pred_9pt[0, (crop_size-cut_9pt):-(crop_size-cut_9pt), (crop_size-cut_9pt):-(crop_size-cut_9pt)]
+    
+    lap_label_13pt_cropped = lap_label_13pt[0]  # Already cropped to cut_size=2
+    lap_pred_13pt_cropped = lap_pred_13pt[0]
+    
+    lap_label_fourier_cropped = lap_label_fourier[0, crop_size:-crop_size, crop_size:-crop_size]
+    lap_pred_fourier_cropped = lap_pred_fourier[0, crop_size:-crop_size, crop_size:-crop_size]
+    
+    # Convert to numpy for plotting
+    lap_label_9pt_plot = to_numpy(lap_label_9pt_cropped)
+    lap_pred_9pt_plot = to_numpy(lap_pred_9pt_cropped)
+    lap_label_13pt_plot = to_numpy(lap_label_13pt_cropped)
+    lap_pred_13pt_plot = to_numpy(lap_pred_13pt_cropped)
+    lap_label_fourier_plot = to_numpy(lap_label_fourier_cropped)
+    lap_pred_fourier_plot = to_numpy(lap_pred_fourier_cropped)
+    
+    # Use the color scale from the standard 9-point finite difference (plot 2)
+    vmin_lap_comp = lap_pred_9pt_plot.min()
+    vmax_lap_comp = lap_pred_9pt_plot.max()
+    
+    # Calculate residuals (absolute differences from true label)
+    residual_9pt = to_numpy(torch.abs(lap_label_9pt_cropped - lap_pred_9pt_cropped))
+    residual_13pt = to_numpy(torch.abs(lap_label_13pt_cropped - lap_pred_13pt_cropped))  
+    residual_fourier = to_numpy(torch.abs(lap_label_fourier_cropped - lap_pred_fourier_cropped))
+    residual_true = to_numpy(torch.zeros_like(lap_label_9pt_cropped))  # True vs true = 0
+    
+    # Calculate relative errors (L2 norm)
+    def calc_relative_error(pred, true):
+        pred_flat = pred.flatten()
+        true_flat = true.flatten()
+        return torch.norm(torch.tensor(pred_flat) - torch.tensor(true_flat)).item() / torch.norm(torch.tensor(true_flat)).item()
+    
+    rel_error_true = 0.0  # True vs true
+    rel_error_9pt = calc_relative_error(lap_pred_9pt_plot, lap_label_9pt_plot)
+    rel_error_13pt = calc_relative_error(lap_pred_13pt_plot, lap_label_13pt_plot)
+    rel_error_fourier = calc_relative_error(lap_pred_fourier_plot, lap_label_fourier_plot)
+    
+    # Create the laplacian comparison plot with residuals
+    fig_lap = plt.figure(figsize=(20, 10))
+    fig_lap.suptitle(f"Laplacian Comparison - Step {step_number}", fontsize=16, y=0.95)
+    
+    # Create subplots: 2 rows (laplacians + residuals), 4 columns, with space for horizontal colorbars
+    gs_lap = fig_lap.add_gridspec(4, 4, height_ratios=[1, 1, 0.05, 0.05], hspace=0.4, wspace=0.3)
+    
+    # Create subplot axes for laplacians (top row)
+    axes_lap = []
+    for j in range(4):
+        ax = fig_lap.add_subplot(gs_lap[0, j])
+        axes_lap.append(ax)
+    
+    # Create subplot axes for residuals (second row)
+    axes_res = []
+    for j in range(4):
+        ax = fig_lap.add_subplot(gs_lap[1, j])
+        axes_res.append(ax)
+    
+    # Plot the laplacians (top row)
+    im_lap0 = axes_lap[0].imshow(lap_label_9pt_plot, cmap='gist_ncar', vmin=vmin_lap_comp, vmax=vmax_lap_comp)
+    axes_lap[0].set_title('Laplacian of true label\n(9-point FD)', fontsize=12)
+    
+    im_lap1 = axes_lap[1].imshow(lap_pred_9pt_plot, cmap='gist_ncar', vmin=vmin_lap_comp, vmax=vmax_lap_comp)
+    axes_lap[1].set_title('Laplacian of prediction\n(9-point FD standard)', fontsize=12)
+    
+    im_lap2 = axes_lap[2].imshow(lap_pred_13pt_plot, cmap='gist_ncar', vmin=vmin_lap_comp, vmax=vmax_lap_comp)
+    axes_lap[2].set_title('Laplacian of prediction\n(13-point FD)', fontsize=12)
+    
+    im_lap3 = axes_lap[3].imshow(lap_pred_fourier_plot, cmap='gist_ncar', vmin=vmin_lap_comp, vmax=vmax_lap_comp)
+    axes_lap[3].set_title('Laplacian of prediction\n(Fourier method)', fontsize=12)
+    
+    # Determine color scale for residuals
+    all_residuals = [residual_true, residual_9pt, residual_13pt, residual_fourier]
+    vmin_res = 0.0  # Absolute values start at 0
+    vmax_res = max([res.max() for res in all_residuals])
+    
+    # Plot the residuals (second row)
+    im_res0 = axes_res[0].imshow(residual_true, cmap='Reds', vmin=vmin_res, vmax=vmax_res)
+    axes_res[0].set_title('|True - True|', fontsize=12)
+    axes_res[0].text(0.05, 0.95, f'Rel. Error: {rel_error_true:.3f}', transform=axes_res[0].transAxes, 
+                     fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8), 
+                     verticalalignment='top')
+    
+    im_res1 = axes_res[1].imshow(residual_9pt, cmap='Reds', vmin=vmin_res, vmax=vmax_res)
+    axes_res[1].set_title('|True - 9pt FD|', fontsize=12)
+    axes_res[1].text(0.05, 0.95, f'Rel. Error: {rel_error_9pt:.3f}', transform=axes_res[1].transAxes, 
+                     fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8), 
+                     verticalalignment='top')
+    
+    im_res2 = axes_res[2].imshow(residual_13pt, cmap='Reds', vmin=vmin_res, vmax=vmax_res)
+    axes_res[2].set_title('|True - 13pt FD|', fontsize=12)
+    axes_res[2].text(0.05, 0.95, f'Rel. Error: {rel_error_13pt:.3f}', transform=axes_res[2].transAxes, 
+                     fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8), 
+                     verticalalignment='top')
+    
+    im_res3 = axes_res[3].imshow(residual_fourier, cmap='Reds', vmin=vmin_res, vmax=vmax_res)
+    axes_res[3].set_title('|True - Fourier|', fontsize=12)
+    axes_res[3].text(0.05, 0.95, f'Rel. Error: {rel_error_fourier:.3f}', transform=axes_res[3].transAxes, 
+                     fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8), 
+                     verticalalignment='top')
+    
+    # Add horizontal colorbars
+    # Colorbar for laplacians
+    cax_lap = fig_lap.add_subplot(gs_lap[2, :])
+    cbar_lap = fig_lap.colorbar(im_lap1, cax=cax_lap, orientation='horizontal')
+    cbar_lap.set_label('Laplacian Values', fontsize=10)
+    
+    # Colorbar for residuals  
+    cax_res = fig_lap.add_subplot(gs_lap[3, :])
+    cbar_res = fig_lap.colorbar(im_res1, cax=cax_res, orientation='horizontal')
+    cbar_res.set_label('Absolute Residual', fontsize=10)
+    
+    # Save the laplacian comparison plot
+    lap_plot_filename = f"laplacian_{step_number:06d}.png"
+    lap_plot_path = os.path.join(plots_dir, lap_plot_filename)
+    plt.savefig(lap_plot_path, dpi=150, bbox_inches='tight')
+    plt.close(fig_lap)
+    
+    # ========================================================================================
+
 
 """-------------------------------Setting parameters for training--------------------------------"""
 '''
@@ -188,14 +312,14 @@ if len(sys.argv) == 2:
         "weight_decay": 1e-10,
         "scheduler_step": 10, # number of steps after which the learning rate is decayed
         "scheduler_gamma": 0.98,
-        "epochs": 100,
+        "epochs": 1,
         "batch_size": 16,
         "exp": 3,                # Do we use L1 or L2 errors? Default: L1 3 for smooth
         "training_samples": 1024,  # How many training samples?
         "lambda": 100,
         "boundary_weight":1, # best known values for helmholtz: 1 for pure, 10 for pretrained (?)
         "pad_factor": 0,
-        "patience": 0.4, #patience for early stopping  - usually 0.4 
+        "patience": 1.0, #patience for early stopping  - usually 0.4 
         "gradient_clip_value": 5 # set None for no gradient clipping
     }
 
@@ -219,7 +343,7 @@ if len(sys.argv) == 2:
     which_example = sys.argv[1]
     
     MODEL_DIR = "helmholtz"
-    CUSTOM_FLAG = "_new" #! changed for the test
+    CUSTOM_FLAG = "_plot_laplacian" #! changed for the test
 
     # if pretrained
     if InfoPretrainedNetwork["Path to pretrained model"] is not None:
